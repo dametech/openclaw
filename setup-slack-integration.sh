@@ -81,84 +81,198 @@ check_prerequisites() {
     log_info "Prerequisites check passed"
 }
 
+# Create reference files for easy copying
+create_reference_files() {
+    log_info "Creating reference files for easy copying..."
+
+    # Create scopes file
+    cat > /tmp/slack-bot-scopes.txt <<'EOF'
+chat:write
+chat:write.customize
+channels:history
+channels:read
+groups:history
+im:history
+im:read
+mpim:history
+mpim:read
+app_mentions:read
+reactions:read
+reactions:write
+pins:read
+pins:write
+emoji:read
+commands
+files:read
+files:write
+EOF
+
+    # Create events file
+    cat > /tmp/slack-bot-events.txt <<'EOF'
+app_mention
+message.channels
+message.groups
+message.im
+message.mpim
+reaction_added
+reaction_removed
+member_joined_channel
+member_left_channel
+channel_rename
+pin_added
+pin_removed
+EOF
+
+    log_info "Reference files created:"
+    echo "  📄 OAuth Scopes: /tmp/slack-bot-scopes.txt"
+    echo "  📄 Bot Events: /tmp/slack-bot-events.txt"
+    echo ""
+}
+
 # Display manual steps for Slack app creation
 show_slack_app_creation_steps() {
-    log_step "Step 1: Create Slack App"
+    log_step "Step 1: Create and Configure Slack App"
 
-    cat <<EOF
-${YELLOW}Manual Steps Required:${NC}
+    create_reference_files
 
-1. Go to: ${CYAN}https://api.slack.com/apps${NC}
+    # Try to open URL in browser
+    echo ""
+    log_info "Opening Slack API page in your browser..."
+    if command -v open &> /dev/null; then
+        open "https://api.slack.com/apps" 2>/dev/null && echo "  ✓ Browser opened" || echo "  ⚠ Please open manually"
+    elif command -v xdg-open &> /dev/null; then
+        xdg-open "https://api.slack.com/apps" 2>/dev/null && echo "  ✓ Browser opened" || echo "  ⚠ Please open manually"
+    else
+        echo "  ⚠ Please open this URL: https://api.slack.com/apps"
+    fi
 
-2. Click ${CYAN}"Create New App"${NC} → ${CYAN}"From scratch"${NC}
+    sleep 2
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
 
-3. App Name: ${CYAN}OpenClaw Bot${NC} (or your preferred name)
-   Workspace: Select your workspace
+    cat <<'EOF'
+📋 SLACK APP SETUP INSTRUCTIONS
 
-4. ${BLUE}Configure Basic Information:${NC}
-   - Under "App Home", enable "Messages Tab"
-   - Optionally add bot display name and icon
+Follow these steps in order. Reference files are available for easy copying!
 
-5. ${BLUE}Enable Socket Mode:${NC}
-   - Go to "Socket Mode" in sidebar
-   - Toggle "Enable Socket Mode" to ON
-   - Click "Generate" to create App-Level Token
-   - Token Name: ${CYAN}openclaw-socket${NC}
-   - Add scope: ${CYAN}connections:write${NC}
-   - ${GREEN}Copy the App Token (xapp-...)${NC} - you'll need it next!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-6. ${BLUE}Configure OAuth & Permissions:${NC}
-   - Go to "OAuth & Permissions" in sidebar
-   - Scroll to "Scopes" → "Bot Token Scopes"
-   - Add these scopes:
-     ${CYAN}• chat:write${NC}
-     ${CYAN}• chat:write.customize${NC} (for custom bot identity)
-     ${CYAN}• channels:history${NC}
-     ${CYAN}• channels:read${NC}
-     ${CYAN}• groups:history${NC}
-     ${CYAN}• im:history${NC}
-     ${CYAN}• im:read${NC}
-     ${CYAN}• mpim:history${NC}
-     ${CYAN}• mpim:read${NC}
-     ${CYAN}• app_mentions:read${NC}
-     ${CYAN}• reactions:read${NC}
-     ${CYAN}• reactions:write${NC}
-     ${CYAN}• pins:read${NC}
-     ${CYAN}• pins:write${NC}
-     ${CYAN}• emoji:read${NC}
-     ${CYAN}• commands${NC}
-     ${CYAN}• files:read${NC}
-     ${CYAN}• files:write${NC}
+📱 STEP 1: Create the Slack App
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-7. ${BLUE}Install App to Workspace:${NC}
-   - Scroll to top of "OAuth & Permissions"
-   - Click ${CYAN}"Install to Workspace"${NC}
-   - Authorize the app
-   - ${GREEN}Copy the Bot User OAuth Token (xoxb-...)${NC}
+   🌐 URL: https://api.slack.com/apps
 
-8. ${BLUE}Subscribe to Bot Events:${NC}
-   - Go to "Event Subscriptions" in sidebar
-   - Toggle "Enable Events" to ON
-   - Under "Subscribe to bot events", add:
-     ${CYAN}• app_mention${NC}
-     ${CYAN}• message.channels${NC}
-     ${CYAN}• message.groups${NC}
-     ${CYAN}• message.im${NC}
-     ${CYAN}• message.mpim${NC}
-     ${CYAN}• reaction_added${NC}
-     ${CYAN}• reaction_removed${NC}
-     ${CYAN}• member_joined_channel${NC}
-     ${CYAN}• member_left_channel${NC}
-     ${CYAN}• channel_rename${NC}
-     ${CYAN}• pin_added${NC}
-     ${CYAN}• pin_removed${NC}
-   - Click "Save Changes"
+   1. Click "Create New App"
+   2. Select "From scratch"
+   3. App Name: OpenClaw Bot
+   4. Choose your workspace
+   5. Click "Create App"
 
-${GREEN}When you have both tokens, return here and continue.${NC}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔌 STEP 2: Enable Socket Mode
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. In the sidebar, click "Socket Mode"
+   2. Toggle "Enable Socket Mode" to ON
+   3. A dialog appears - click "Generate"
+   4. Token Name: openclaw-socket
+   5. Add scope: connections:write
+   6. Click "Generate"
+   7. ✅ COPY THE APP TOKEN (starts with xapp-)
+   8. Click "Done"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔐 STEP 3: Add OAuth Scopes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. In the sidebar, click "OAuth & Permissions"
+   2. Scroll down to "Scopes" section
+   3. Under "Bot Token Scopes", click "Add an OAuth Scope"
+   4. Add each scope from the list below
+
+   📋 Easy copy method:
+
+      In a new terminal window, run:
+
+      cat /tmp/slack-bot-scopes.txt
+
+      Or copy to clipboard:
+
+      pbcopy < /tmp/slack-bot-scopes.txt           (macOS)
+      xclip -sel clip < /tmp/slack-bot-scopes.txt  (Linux)
+
+   📝 Scopes to add (18 total):
 
 EOF
 
-    read -p "Press Enter when you have copied both tokens..."
+    # Display scopes in a clean format
+    while IFS= read -r scope; do
+        echo "      • $scope"
+    done < /tmp/slack-bot-scopes.txt
+
+    cat <<'EOF'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 STEP 4: Install App to Workspace
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. Scroll to the top of the "OAuth & Permissions" page
+   2. Click "Install to Workspace" button
+   3. Review permissions
+   4. Click "Allow"
+   5. ✅ COPY THE BOT USER OAUTH TOKEN (starts with xoxb-)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📡 STEP 5: Subscribe to Bot Events
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. In the sidebar, click "Event Subscriptions"
+   2. Toggle "Enable Events" to ON
+   3. Scroll down to "Subscribe to bot events"
+   4. Click "Add Bot User Event"
+   5. Add each event from the list below
+
+   📋 Easy copy method:
+
+      cat /tmp/slack-bot-events.txt
+
+   📝 Events to add (12 total):
+
+EOF
+
+    # Display events in a clean format
+    while IFS= read -r event; do
+        echo "      • $event"
+    done < /tmp/slack-bot-events.txt
+
+    cat <<'EOF'
+
+   6. Click "Save Changes" at the bottom
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💬 STEP 6: Enable Messages Tab
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. In the sidebar, click "App Home"
+   2. Under "Show Tabs", toggle "Messages Tab" to ON
+   3. Enable "Allow users to send Slash commands and messages"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ You should now have TWO tokens:
+   • App Token (xapp-...) from Socket Mode
+   • Bot Token (xoxb-...) from OAuth installation
+
+EOF
+
+    echo ""
+    read -p "Press Enter when you have both tokens ready... "
 }
 
 # Collect Slack tokens
@@ -166,7 +280,10 @@ collect_slack_tokens() {
     log_step "Step 2: Enter Slack Tokens"
 
     echo ""
-    echo -n "Enter your Slack App Token (xapp-...): "
+    echo "Please paste your tokens below:"
+    echo ""
+
+    echo -n "App Token (xapp-...): "
     read -r SLACK_APP_TOKEN
 
     if [[ ! $SLACK_APP_TOKEN =~ ^xapp- ]]; then
@@ -174,7 +291,7 @@ collect_slack_tokens() {
         exit 1
     fi
 
-    echo -n "Enter your Slack Bot Token (xoxb-...): "
+    echo -n "Bot Token (xoxb-...): "
     read -r SLACK_BOT_TOKEN
 
     if [[ ! $SLACK_BOT_TOKEN =~ ^xoxb- ]]; then
@@ -182,7 +299,8 @@ collect_slack_tokens() {
         exit 1
     fi
 
-    log_info "Tokens collected successfully"
+    echo ""
+    log_info "✓ Tokens validated successfully"
 }
 
 # Store tokens in 1Password
@@ -199,7 +317,7 @@ store_in_1password() {
     read -r VAULT_NAME
     VAULT_NAME=${VAULT_NAME:-openclaw}
 
-    log_info "Creating item in 1Password vault: $VAULT_NAME"
+    log_info "Storing tokens in 1Password vault: $VAULT_NAME"
 
     # Check if item exists
     if op item get "OpenClaw Slack Tokens" --vault "$VAULT_NAME" &>/dev/null; then
@@ -224,7 +342,8 @@ store_in_1password() {
             > /dev/null
     fi
 
-    log_info "Tokens stored in 1Password: op:///$VAULT_NAME/OpenClaw Slack Tokens/{app_token,bot_token}"
+    log_info "✓ Tokens stored in 1Password"
+    echo "  📍 Location: op:///$VAULT_NAME/OpenClaw Slack Tokens"
 
     # Set SecretRef paths
     APP_TOKEN_REF="op:///$VAULT_NAME/OpenClaw Slack Tokens/app_token"
@@ -272,14 +391,14 @@ EOF
 
     fi
 
-    log_info "Secret created: openclaw-slack-tokens"
+    log_info "✓ Secret created: openclaw-slack-tokens"
 }
 
 # Generate openclaw.json configuration
 generate_openclaw_config() {
     log_step "Step 5: Generate Configuration"
 
-    log_info "Creating openclaw.json configuration snippet..."
+    log_info "Creating openclaw.json configuration..."
 
     cat > /tmp/openclaw-slack-config.json <<'EOF'
 {
@@ -297,12 +416,7 @@ generate_openclaw_config() {
 }
 EOF
 
-    log_info "Configuration created: /tmp/openclaw-slack-config.json"
-
-    echo ""
-    log_info "Configuration preview:"
-    cat /tmp/openclaw-slack-config.json
-    echo ""
+    log_info "✓ Configuration created: /tmp/openclaw-slack-config.json"
 }
 
 # Update Helm values and deploy
@@ -311,13 +425,9 @@ update_helm_deployment() {
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
-    # Read current values
-    if [ -f /tmp/openclaw-values.yaml ]; then
-        log_info "Updating existing values file..."
-        cp /tmp/openclaw-values.yaml /tmp/openclaw-values.yaml.bak
-    else
-        log_info "Creating new values file..."
-        cat > /tmp/openclaw-values.yaml <<'EOF'
+    log_info "Creating Helm values file..."
+
+    cat > /tmp/openclaw-values.yaml <<'EOF'
 app-template:
   controllers:
     main:
@@ -368,9 +478,8 @@ app-template:
       size: 5Gi
       storageClass: talos-hostpath
 EOF
-    fi
 
-    log_info "Deploying updated configuration..."
+    log_info "Deploying updated configuration to Kubernetes..."
 
     helm upgrade openclaw openclaw-community/openclaw \
         --namespace "$NAMESPACE" \
@@ -378,7 +487,7 @@ EOF
         --wait \
         --timeout 5m
 
-    log_info "Deployment updated successfully"
+    log_info "✓ Deployment updated successfully"
 }
 
 # Wait for pod to be ready
@@ -394,12 +503,12 @@ wait_for_pod() {
         -n "$NAMESPACE" \
         --timeout=300s
 
-    log_info "Pod is ready!"
+    log_info "✓ Pod is ready!"
 }
 
 # Test Slack integration
 test_slack_integration() {
-    log_step "Step 8: Test Slack Integration"
+    log_step "Step 8: Verify Slack Integration"
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
@@ -407,19 +516,13 @@ test_slack_integration() {
 
     sleep 5
 
-    kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=openclaw -c main --tail=50 \
-        | grep -i slack || log_warn "No Slack-related log entries found yet"
-
     echo ""
-    log_info "To test the integration:"
-    echo "  1. Open Slack and go to your workspace"
-    echo "  2. Find the OpenClaw bot in the Apps section"
-    echo "  3. Send a direct message to the bot"
-    echo "  4. The bot should respond (after pairing approval)"
-    echo ""
-    echo "  To approve pairing (if needed), run:"
-    echo "  ${CYAN}kubectl exec -n openclaw deployment/openclaw -c main -- node dist/index.js pairing list${NC}"
-    echo "  ${CYAN}kubectl exec -n openclaw deployment/openclaw -c main -- node dist/index.js pairing approve slack <code>${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "Recent logs:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=openclaw -c main --tail=30 \
+        | grep -i "slack\|socket\|channel" || log_warn "No Slack-related log entries found yet"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 }
 
@@ -429,41 +532,63 @@ show_completion() {
 
     cat <<EOF
 
-${GREEN}Slack integration is now configured and deployed!${NC}
+${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+${GREEN}   Slack Integration Successfully Configured!${NC}
+${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
 
-${BLUE}Next Steps:${NC}
+${BLUE}📱 Test the Bot:${NC}
 
-1. ${CYAN}Test the Bot:${NC}
-   - Open Slack and find your OpenClaw bot
-   - Send it a DM: "Hello!"
+   1. Open Slack workspace
+   2. Go to "Apps" section
+   3. Find "OpenClaw Bot"
+   4. Send a DM: "Hello!"
 
-2. ${CYAN}Approve Pairing (if needed):${NC}
+${BLUE}🔐 Approve Pairing (if needed):${NC}
+
+   kubectl exec -n openclaw deployment/openclaw -c main -- \\
+     node dist/index.js pairing list
+
    kubectl exec -n openclaw deployment/openclaw -c main -- \\
      node dist/index.js pairing approve slack <code>
 
-3. ${CYAN}Invite Bot to Channels:${NC}
-   - Type ${CYAN}/invite @OpenClaw${NC} in any channel
-   - Mention bot with ${CYAN}@OpenClaw${NC} to get responses
+${BLUE}💬 Invite to Channels:${NC}
 
-4. ${CYAN}View Logs:${NC}
+   In any channel, type:
+   /invite @OpenClaw
+
+   Then mention the bot:
+   @OpenClaw what can you help me with?
+
+${BLUE}📊 View Logs:${NC}
+
    kubectl logs -n openclaw -l app.kubernetes.io/name=openclaw -c main -f
 
-${BLUE}Configuration Files:${NC}
-- Kubernetes Secret: ${CYAN}openclaw-slack-tokens${NC}
-- Helm Values: ${CYAN}/tmp/openclaw-values.yaml${NC}
-- Config Snippet: ${CYAN}/tmp/openclaw-slack-config.json${NC}
+${BLUE}📄 Configuration Files:${NC}
 
-${BLUE}Tokens Stored:${NC}
+   • Kubernetes Secret: ${CYAN}openclaw-slack-tokens${NC}
+   • Helm Values: ${CYAN}/tmp/openclaw-values.yaml${NC}
+   • Config Snippet: ${CYAN}/tmp/openclaw-slack-config.json${NC}
+   • OAuth Scopes: ${CYAN}/tmp/slack-bot-scopes.txt${NC}
+   • Bot Events: ${CYAN}/tmp/slack-bot-events.txt${NC}
+
+${BLUE}🔑 Tokens Stored In:${NC}
+
 EOF
 
     if [ "$USE_1PASSWORD" = true ]; then
-        echo "- 1Password: ${CYAN}$VAULT_NAME/OpenClaw Slack Tokens${NC}"
+        echo "   • 1Password: ${CYAN}$VAULT_NAME/OpenClaw Slack Tokens${NC}"
     fi
-    echo "- Kubernetes: ${CYAN}$NAMESPACE/openclaw-slack-tokens${NC}"
+    echo "   • Kubernetes: ${CYAN}$NAMESPACE/openclaw-slack-tokens${NC}"
 
-    echo ""
-    log_info "Documentation: https://docs.openclaw.ai/channels/slack"
-    echo ""
+    cat <<EOF
+
+${BLUE}📚 Documentation:${NC}
+
+   https://docs.openclaw.ai/channels/slack
+
+${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}
+
+EOF
 }
 
 # Main execution
