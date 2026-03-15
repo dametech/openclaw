@@ -23,9 +23,31 @@ The script will guide you through:
 5. Deploying to Kubernetes
 6. Testing the integration
 
-## Manual Setup Steps (In Slack)
+## Setup Methods
 
-### 1. Create Slack App
+There are two ways to create your Slack app:
+
+### Method 1: App Manifest (Recommended) ⚡
+
+Create a fully configured app with one paste! The manifest includes all OAuth scopes, event subscriptions, and settings.
+
+1. Go to https://api.slack.com/apps
+2. Click "Create New App" → **"From an app manifest"**
+3. Choose your workspace
+4. Click "Next"
+5. Select **"YAML"** tab
+6. Copy the entire contents of `slack-app-manifest.yaml` and paste it
+7. Click "Next" → "Create"
+
+**That's it!** All scopes, events, and settings are configured automatically.
+
+Then just:
+- Generate Socket Mode token (xapp-...)
+- Install to workspace to get Bot token (xoxb-...)
+
+### Method 2: Manual Setup (Step-by-Step)
+
+If you prefer clicking through the UI:
 
 1. Go to https://api.slack.com/apps
 2. Click "Create New App" → "From scratch"

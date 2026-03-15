@@ -129,8 +129,147 @@ EOF
     echo ""
 }
 
+# Ask user for setup method
+choose_setup_method() {
+    log_step "Choose Setup Method"
+
+    cat <<'EOF'
+
+Choose how you want to create your Slack app:
+
+  1) App Manifest (Recommended) - One paste, fully configured
+  2) Manual Setup - Step-by-step through Slack UI
+
+EOF
+
+    read -p "Enter choice (1 or 2): " choice
+
+    case $choice in
+        1)
+            SETUP_METHOD="manifest"
+            ;;
+        2)
+            SETUP_METHOD="manual"
+            ;;
+        *)
+            log_error "Invalid choice. Please enter 1 or 2"
+            exit 1
+            ;;
+    esac
+}
+
+# Show manifest-based setup
+show_manifest_setup() {
+    log_step "Step 1: Create App with Manifest"
+
+    create_reference_files
+
+    # Check if manifest file exists
+    if [ ! -f "$SCRIPT_DIR/slack-app-manifest.yaml" ]; then
+        log_error "Manifest file not found: $SCRIPT_DIR/slack-app-manifest.yaml"
+        exit 1
+    fi
+
+    # Try to open URL in browser
+    echo ""
+    log_info "Opening Slack API page in your browser..."
+    if command -v open &> /dev/null; then
+        open "https://api.slack.com/apps" 2>/dev/null && echo "  ✓ Browser opened" || echo "  ⚠ Please open manually"
+    elif command -v xdg-open &> /dev/null; then
+        xdg-open "https://api.slack.com/apps" 2>/dev/null && echo "  ✓ Browser opened" || echo "  ⚠ Please open manually"
+    else
+        echo "  ⚠ Please open this URL: https://api.slack.com/apps"
+    fi
+
+    sleep 2
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+
+    cat <<'EOF'
+📋 QUICK SETUP WITH APP MANIFEST
+
+This method creates a fully configured Slack app in seconds!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📱 STEP 1: Create App from Manifest
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   🌐 URL: https://api.slack.com/apps
+
+   1. Click "Create New App"
+   2. Select "From an app manifest"
+   3. Choose your workspace
+   4. Click "Next"
+   5. Select "YAML" tab
+   6. Copy the manifest below and paste it in
+   7. Click "Next"
+   8. Review the configuration
+   9. Click "Create"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 APP MANIFEST (copy everything below):
+
+EOF
+
+    # Display manifest with copy helper
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    cat "$SCRIPT_DIR/slack-app-manifest.yaml"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    cat <<EOF
+
+   📋 Quick copy to clipboard:
+
+      pbcopy < $SCRIPT_DIR/slack-app-manifest.yaml           (macOS)
+      xclip -sel clip < $SCRIPT_DIR/slack-app-manifest.yaml  (Linux)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔌 STEP 2: Generate Socket Mode Token
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   After creating the app:
+
+   1. In the sidebar, click "Socket Mode"
+   2. A token generation dialog should appear automatically
+   3. If not, click "Generate"
+   4. Token Name: openclaw-socket
+   5. The scope "connections:write" is already configured
+   6. Click "Generate"
+   7. ✅ COPY THE APP TOKEN (starts with xapp-)
+   8. Click "Done"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 STEP 3: Install App to Workspace
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. In the sidebar, click "Install App"
+   2. Click "Install to Workspace"
+   3. Review permissions (already configured by manifest)
+   4. Click "Allow"
+   5. ✅ COPY THE BOT USER OAUTH TOKEN (starts with xoxb-)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ That's it! The manifest configured everything else:
+   ✓ OAuth scopes (18 scopes)
+   ✓ Bot events (12 events)
+   ✓ Socket Mode enabled
+   ✓ Messages Tab enabled
+   ✓ App home configured
+
+When you have BOTH tokens (xapp-... and xoxb-...), press Enter to continue...
+EOF
+
+    read -p ""
+}
+
 # Display manual steps for Slack app creation
-show_slack_app_creation_steps() {
+show_manual_setup() {
     log_step "Step 1: Create and Configure Slack App"
 
     create_reference_files
@@ -595,7 +734,14 @@ EOF
 main() {
     show_banner
     check_prerequisites
-    show_slack_app_creation_steps
+    choose_setup_method
+
+    if [ "$SETUP_METHOD" = "manifest" ]; then
+        show_manifest_setup
+    else
+        show_manual_setup
+    fi
+
     collect_slack_tokens
     store_in_1password
     create_k8s_secret
