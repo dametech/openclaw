@@ -41,10 +41,18 @@ This script will:
 Start port forwarding to access the web interface:
 
 ```bash
+# Use default port 18789
 ./openclaw-portforward.sh
+
+# Or specify a custom local port
+./openclaw-portforward.sh -p 8080
+./openclaw-portforward.sh --port 9000
+
+# Legacy positional argument also supported
+./openclaw-portforward.sh 8080
 ```
 
-Then open your browser to: **http://localhost:18789**
+Then open your browser to the URL displayed by the script (e.g., **http://localhost:18789**).
 
 Authenticate using the gateway token displayed by the script.
 
@@ -164,6 +172,20 @@ kubectl exec -n openclaw deployment/openclaw -c main -- cat /home/node/.openclaw
 
 ```bash
 kubectl rollout restart deployment/openclaw -n openclaw
+```
+
+### Manual Port Forwarding
+
+If you need more control over port forwarding:
+
+```bash
+export KUBECONFIG=~/.kube/au01-0.yaml
+
+# Forward to default port
+kubectl port-forward -n openclaw svc/openclaw 18789:18789
+
+# Forward to custom local port
+kubectl port-forward -n openclaw svc/openclaw 8080:18789
 ```
 
 ## Troubleshooting
