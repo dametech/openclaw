@@ -204,11 +204,14 @@ Send another message to the bot - it should respond!
       "enabled": true,
       "mode": "socket",
       "appToken": "xapp-1-AXXXXXXXXX-...",
-      "botToken": "xoxb-XXXXXXXXX-XXXXXXXXX-XXXXXXXXXXXXXXXX"
+      "botToken": "xoxb-XXXXXXXXX-XXXXXXXXX-XXXXXXXXXXXXXXXX",
+      "groupPolicy": "open"
     }
   }
 }
 ```
+
+**IMPORTANT**: Set `groupPolicy` to `"open"` to allow the bot to respond in channels and groups. The default `"allowlist"` only allows DMs!
 
 ### Full Slack Config (with optional settings)
 
@@ -222,11 +225,25 @@ Send another message to the bot - it should respond!
       "appToken": "xapp-1-AXXXXXXXXX-...",
       "botToken": "xoxb-XXXXXXXXX-XXXXXXXXX-XXXXXXXXXXXXXXXX",
       "userTokenReadOnly": true,
-      "groupPolicy": "allowlist",
+      "groupPolicy": "open",
       "streaming": "partial",
       "nativeStreaming": true
     }
   }
+}
+```
+
+### Group Policy Options
+
+- `"open"` - Bot responds in all channels and groups (recommended for testing)
+- `"allowlist"` - Bot only responds in explicitly allowed channels/groups
+- `"disabled"` - Bot only works in DMs (channels/groups disabled)
+
+**For production**, use allowlist mode:
+```json
+{
+  "groupPolicy": "allowlist",
+  "allowedChannels": ["C01DEVOPS123", "C02GENERAL456"]
 }
 ```
 
@@ -260,6 +277,31 @@ Send another message to the bot - it should respond!
 **Cause**: Missing write scopes
 
 **Solution**: Add all write scopes listed above, reinstall, update token
+
+### Bot Works in DMs But Not Channels/Groups
+
+**Symptoms**: Bot responds to DMs but ignores channel mentions
+
+**Cause**: `groupPolicy` is set to `"allowlist"` or `"disabled"`
+
+**Solution**: Update configuration:
+```bash
+export KUBECONFIG=~/.kube/au01-0.yaml
+
+# Get config
+kubectl exec -n openclaw deployment/openclaw -c main -- \
+  cat /home/node/.openclaw/openclaw.json > /tmp/config.json
+
+# Update groupPolicy to open
+cat /tmp/config.json | jq '.channels.slack.groupPolicy = "open"' > /tmp/config-updated.json
+
+# Write back
+kubectl exec -n openclaw deployment/openclaw -c main -i -- \
+  sh -c 'cat > /home/node/.openclaw/openclaw.json' < /tmp/config-updated.json
+
+# Restart
+kubectl rollout restart deployment/openclaw -n openclaw
+```
 
 ### No Events Received
 

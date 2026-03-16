@@ -133,7 +133,8 @@ cat /tmp/openclaw-current.json | \
   jq ".channels.slack.appToken = \"$APP_TOKEN\"" | \
   jq ".channels.slack.botToken = \"$BOT_TOKEN\"" | \
   jq ".channels.slack.enabled = true" | \
-  jq ".channels.slack.mode = \"socket\"" \
+  jq ".channels.slack.mode = \"socket\"" | \
+  jq ".channels.slack.groupPolicy = \"open\"" \
   > /tmp/openclaw-updated.json
 
 # Verify update
