@@ -1,0 +1,30 @@
+# OpenClaw Teams Integration Configuration
+# Copy this file to terraform.tfvars and fill in your values
+
+aws_region  = "ap-southeast-2"
+aws_profile = "personal"
+environment = "prod"
+
+# VPC Configuration
+vpc_id = "vpc-XXXXXXXXX"  # Replace with your DAME-VPC ID
+
+# Existing ALB Configuration
+alb_arn          = "arn:aws:elasticloadbalancing:ap-southeast-2:ACCOUNT:loadbalancer/app/openclaw-alb/56373705"
+alb_listener_arn = "arn:aws:elasticloadbalancing:ap-southeast-2:ACCOUNT:listener/app/openclaw-alb/56373705/LISTENER_ID"
+
+# Kubernetes Worker Node IPs (from au01-0 cluster)
+# Get these with: kubectl get nodes -o wide
+k8s_worker_nodes = [
+  "10.42.32.XX",  # talos-cluster-one-worker-w01
+  "10.42.32.XX",  # talos-cluster-one-worker-w02
+  "10.42.32.XX",  # talos-cluster-one-worker-w04
+]
+
+# Kubernetes NodePort for Teams webhook
+k8s_nodeport = 30978
+
+# Health check configuration
+health_check_path = "/"
+
+# Teams webhook path
+teams_webhook_path = "/api/messages"
