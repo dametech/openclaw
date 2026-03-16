@@ -6,7 +6,7 @@ The openclaw-ec2 instance can be accessed in two ways:
 2. **SSM Session Manager**: Secure access via AWS Systems Manager (no SSH keys or public IPs needed)
 
 ## Instance Details
-- **Instance ID**: i-0f6dac37c87940ba9
+- **Instance ID**: <YOUR-INSTANCE-ID>
 - **Private IP**: 10.0.2.162
 - **Region**: ap-southeast-2
 - **SSM Status**: Online
@@ -71,7 +71,7 @@ Access the OpenClaw Control UI via HTTPS from within the VPC:
 
 ```bash
 # Authentication token
-TOKEN="9e56f4da7659390a5791329ff3c542452f500219e2178e00"
+TOKEN="<YOUR-OPENCLAW-TOKEN>"
 
 # Access via HTTPS (through nginx)
 curl -k -H "Authorization: Bearer $TOKEN" https://10.0.2.162/
@@ -115,14 +115,14 @@ curl -H "Authorization: Bearer $TOKEN" http://10.0.2.162:18789/
 # Forward port 3978 (openclaw gateway)
 aws ssm start-session \
     --region ap-southeast-2 \
-    --target i-0f6dac37c87940ba9 \
+    --target <YOUR-INSTANCE-ID> \
     --document-name AWS-StartPortForwardingSession \
     --parameters '{"portNumber":["3978"],"localPortNumber":["3978"]}'
 
 # Forward port 80 (web interface)
 aws ssm start-session \
     --region ap-southeast-2 \
-    --target i-0f6dac37c87940ba9 \
+    --target <YOUR-INSTANCE-ID> \
     --document-name AWS-StartPortForwardingSession \
     --parameters '{"portNumber":["80"],"localPortNumber":["8080"]}'
 ```
@@ -131,7 +131,7 @@ aws ssm start-session \
 ```bash
 aws ssm start-session \
     --region ap-southeast-2 \
-    --target i-0f6dac37c87940ba9
+    --target <YOUR-INSTANCE-ID>
 ```
 
 ## Prerequisites
@@ -163,14 +163,14 @@ brew install --cask session-manager-plugin
 ```bash
 aws ssm describe-instance-information \
     --region ap-southeast-2 \
-    --filters "Key=InstanceIds,Values=i-0f6dac37c87940ba9"
+    --filters "Key=InstanceIds,Values=<YOUR-INSTANCE-ID>"
 ```
 
 ### Check running processes
 ```bash
 aws ssm start-session \
     --region ap-southeast-2 \
-    --target i-0f6dac37c87940ba9 \
+    --target <YOUR-INSTANCE-ID> \
     --document-name AWS-StartNonInteractiveCommand \
     --parameters '{"command":["ps aux | grep openclaw"]}'
 ```
@@ -179,7 +179,7 @@ aws ssm start-session \
 ```bash
 aws ssm start-session \
     --region ap-southeast-2 \
-    --target i-0f6dac37c87940ba9 \
+    --target <YOUR-INSTANCE-ID> \
     --document-name AWS-StartNonInteractiveCommand \
     --parameters '{"command":["ss -tlnp"]}'
 ```

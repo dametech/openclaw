@@ -4,7 +4,7 @@
 2026-03-16
 
 ## Instance Details
-- **Instance ID**: i-0f6dac37c87940ba9
+- **Instance ID**: <YOUR-INSTANCE-ID>
 - **Instance Name**: openclaw-ec2
 - **Instance Type**: t3.medium
 - **Private IP**: 10.0.2.162
@@ -129,7 +129,7 @@ server {
   },
   "auth": {
     "mode": "token",
-    "token": "9e56f4da7659390a5791329ff3c542452f500219e2178e00"
+    "token": "<YOUR-OPENCLAW-TOKEN>"
   },
   "trustedProxies": [
     "127.0.0.1",
@@ -158,7 +158,7 @@ server {
 **Command Used**: `openclaw devices approve <request-id>`
 
 **Device Approved:**
-- Device ID: `263906cbc6e25034717b0e5cc8666dd62983f8580e6313cb4def20497d251576`
+- Device ID: `<YOUR-DEVICE-ID>`
 - Request ID: `1030abe6-e097-4a4c-b3d2-04d246f22443`
 - Role: operator
 - Scopes: operator.admin, operator.approvals, operator.pairing
@@ -173,7 +173,7 @@ server {
 
 **Primary URL:**
 ```
-https://10.0.2.162/?token=9e56f4da7659390a5791329ff3c542452f500219e2178e00
+https://10.0.2.162/?token=<YOUR-OPENCLAW-TOKEN>
 ```
 
 **Helper Script:**
@@ -190,19 +190,19 @@ https://10.0.2.162/?token=9e56f4da7659390a5791329ff3c542452f500219e2178e00
 **HTTPS (Recommended):**
 ```bash
 curl -k \
-  -H "Authorization: Bearer 9e56f4da7659390a5791329ff3c542452f500219e2178e00" \
+  -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
   https://10.0.2.162/api/agents
 ```
 
 **HTTP Direct:**
 ```bash
-curl -H "Authorization: Bearer 9e56f4da7659390a5791329ff3c542452f500219e2178e00" \
+curl -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
   http://10.0.2.162:18789/api/agents
 ```
 
 ### Gateway Token
 ```
-9e56f4da7659390a5791329ff3c542452f500219e2178e00
+<YOUR-OPENCLAW-TOKEN>
 ```
 
 ---
@@ -241,7 +241,7 @@ Returns the complete Control UI URL with token:
 ```bash
 ./get-openclaw-url.sh
 ```
-Output: `https://10.0.2.162/?token=9e56f4da7659390a5791329ff3c542452f500219e2178e00`
+Output: `https://10.0.2.162/?token=<YOUR-OPENCLAW-TOKEN>`
 
 ### 2. connect-openclaw.sh
 SSM port forwarding for local access:
@@ -290,7 +290,7 @@ Tests connectivity to openclaw from within VPC:
 
 ### Test HTTPS Access
 ```bash
-curl -k -s -H "Authorization: Bearer 9e56f4da7659390a5791329ff3c542452f500219e2178e00" \
+curl -k -s -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
   https://10.0.2.162/ | head -5
 ```
 
@@ -298,7 +298,7 @@ Expected: HTML content from OpenClaw Control UI
 
 ### Test Port Listening
 ```bash
-aws ssm start-session --region ap-southeast-2 --target i-0f6dac37c87940ba9
+aws ssm start-session --region ap-southeast-2 --target <YOUR-INSTANCE-ID>
 ss -tlnp | grep -E '(443|18789|3978|80)'
 ```
 
@@ -306,7 +306,7 @@ Expected: All ports listening on appropriate interfaces
 
 ### Test Device Pairing
 ```bash
-aws ssm start-session --region ap-southeast-2 --target i-0f6dac37c87940ba9
+aws ssm start-session --region ap-southeast-2 --target <YOUR-INSTANCE-ID>
 openclaw devices list
 ```
 
@@ -319,7 +319,7 @@ Expected: 3 paired devices, 0 pending
 ### If Control UI shows "origin not allowed"
 Check allowed origins:
 ```bash
-aws ssm start-session --region ap-southeast-2 --target i-0f6dac37c87940ba9
+aws ssm start-session --region ap-southeast-2 --target <YOUR-INSTANCE-ID>
 jq .gateway.controlUi.allowedOrigins ~/.openclaw/openclaw.json
 ```
 
