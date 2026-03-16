@@ -293,8 +293,13 @@ show_manual_setup() {
     cat <<'EOF'
 📋 SLACK APP SETUP INSTRUCTIONS
 
-IMPORTANT: Follow these steps IN ORDER! Socket Mode must be enabled first.
+⚠️  CRITICAL: This is a TWO-PHASE setup!
+   Phase 1: Create app and install (get initial tokens)
+   Phase 2: Add events and REINSTALL (events won't work without reinstall!)
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 1: INITIAL SETUP
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📱 STEP 1: Create the Slack App
@@ -313,8 +318,8 @@ IMPORTANT: Follow these steps IN ORDER! Socket Mode must be enabled first.
 🔌 STEP 2: Enable Socket Mode (DO THIS FIRST!)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   ⚠️  IMPORTANT: Enable Socket Mode BEFORE adding scopes or events!
-      This allows you to save Event Subscriptions without a Request URL.
+   ⚠️  IMPORTANT: Enable Socket Mode BEFORE adding scopes!
+      This lets you skip Request URLs for events later.
 
    1. In the sidebar, click "Socket Mode"
    2. Toggle "Enable Socket Mode" to ON
@@ -323,7 +328,7 @@ IMPORTANT: Follow these steps IN ORDER! Socket Mode must be enabled first.
    5. Add scope: connections:write
    6. Click "Generate"
    7. ✅ COPY THE APP TOKEN (starts with xapp-...)
-      Keep this token safe - you'll need it later!
+      Save this token - you'll need it at the end!
    8. Click "Done"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -371,17 +376,34 @@ EOF
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+📦 STEP 4: Install App to Workspace (FIRST TIME)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. In the sidebar, click "OAuth & Permissions"
+   2. Scroll to top and click "Install to Workspace"
+   3. Review permissions
+   4. Click "Allow"
+   5. ✅ COPY THE BOT USER OAUTH TOKEN (starts with xoxb-...)
+      Save this token - you'll need it at the end!
+
+   ⚠️  DON'T CLOSE THE BROWSER YET! We need to add events next!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PHASE 2: ADD EVENTS (CRITICAL!)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 📡 STEP 5: Subscribe to Bot Events
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   ℹ️  NOTE: Because Socket Mode is enabled, you won't need a Request URL!
+   ⚠️  CRITICAL: Without these events, the bot won't receive messages!
 
    1. In the sidebar, click "Event Subscriptions"
    2. Toggle "Enable Events" to ON
    3. You should see: "Socket mode is enabled. You don't need a request URL."
    4. Scroll down to "Subscribe to bot events"
    5. Click "Add Bot User Event"
-   6. Add each event from the list below
+   6. Add EACH event from the list below (5 events total)
 
    📋 Easy copy method:
 
