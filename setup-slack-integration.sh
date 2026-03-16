@@ -293,7 +293,7 @@ show_manual_setup() {
     cat <<'EOF'
 📋 SLACK APP SETUP INSTRUCTIONS
 
-Follow these steps in order. Reference files are available for easy copying!
+IMPORTANT: Follow these steps IN ORDER! Socket Mode must be enabled first.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -310,8 +310,11 @@ Follow these steps in order. Reference files are available for easy copying!
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🔌 STEP 2: Enable Socket Mode
+🔌 STEP 2: Enable Socket Mode (DO THIS FIRST!)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   ⚠️  IMPORTANT: Enable Socket Mode BEFORE adding scopes or events!
+      This allows you to save Event Subscriptions without a Request URL.
 
    1. In the sidebar, click "Socket Mode"
    2. Toggle "Enable Socket Mode" to ON
@@ -319,7 +322,8 @@ Follow these steps in order. Reference files are available for easy copying!
    4. Token Name: openclaw-socket
    5. Add scope: connections:write
    6. Click "Generate"
-   7. ✅ COPY THE APP TOKEN (starts with xapp-)
+   7. ✅ COPY THE APP TOKEN (starts with xapp-...)
+      Keep this token safe - you'll need it later!
    8. Click "Done"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -370,11 +374,14 @@ EOF
 📡 STEP 5: Subscribe to Bot Events
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+   ℹ️  NOTE: Because Socket Mode is enabled, you won't need a Request URL!
+
    1. In the sidebar, click "Event Subscriptions"
    2. Toggle "Enable Events" to ON
-   3. Scroll down to "Subscribe to bot events"
-   4. Click "Add Bot User Event"
-   5. Add each event from the list below
+   3. You should see: "Socket mode is enabled. You don't need a request URL."
+   4. Scroll down to "Subscribe to bot events"
+   5. Click "Add Bot User Event"
+   6. Add each event from the list below
 
    📋 Easy copy method:
 
