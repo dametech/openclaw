@@ -18,7 +18,7 @@ http://10.0.2.162:18789
 
 **Authentication Token:**
 ```
-9e56f4da7659390a5791329ff3c542452f500219e2178e00
+<YOUR-OPENCLAW-TOKEN>
 ```
 
 ---
@@ -99,28 +99,28 @@ Call gateway methods directly via the CLI.
 **Health Check:**
 ```bash
 openclaw gateway call health \
-  --token 9e56f4da7659390a5791329ff3c542452f500219e2178e00 \
+  --token <YOUR-OPENCLAW-TOKEN> \
   --json
 ```
 
 **Gateway Status:**
 ```bash
 openclaw gateway call status \
-  --token 9e56f4da7659390a5791329ff3c542452f500219e2178e00 \
+  --token <YOUR-OPENCLAW-TOKEN> \
   --json
 ```
 
 **System Presence:**
 ```bash
 openclaw gateway call system-presence \
-  --token 9e56f4da7659390a5791329ff3c542452f500219e2178e00 \
+  --token <YOUR-OPENCLAW-TOKEN> \
   --json
 ```
 
 **Cron Jobs:**
 ```bash
 openclaw gateway call cron.list \
-  --token 9e56f4da7659390a5791329ff3c542452f500219e2178e00 \
+  --token <YOUR-OPENCLAW-TOKEN> \
   --json
 ```
 
@@ -132,7 +132,7 @@ Access the web-based Control UI with full agent management.
 
 **URL (with authentication):**
 ```
-https://10.0.2.162/?token=9e56f4da7659390a5791329ff3c542452f500219e2178e00
+https://10.0.2.162/?token=<YOUR-OPENCLAW-TOKEN>
 ```
 
 **Features:**
@@ -189,7 +189,7 @@ ssm = boto3.client('ssm', region_name='ap-southeast-2')
 def openclaw_chat(agent_id, message):
     # Send command
     response = ssm.send_command(
-        InstanceIds=['i-0f6dac37c87940ba9'],
+        InstanceIds=['<YOUR-INSTANCE-ID>'],
         DocumentName='AWS-RunShellScript',
         Parameters={
             'commands': [
@@ -206,7 +206,7 @@ def openclaw_chat(agent_id, message):
     # Get output
     output = ssm.get_command_invocation(
         CommandId=command_id,
-        InstanceId='i-0f6dac37c87940ba9'
+        InstanceId='<YOUR-INSTANCE-ID>'
     )
 
     return json.loads(output['StandardOutputContent'])
@@ -225,7 +225,7 @@ MESSAGE="Hello, this is a test"
 
 COMMAND_ID=$(aws ssm send-command \
     --region ap-southeast-2 \
-    --instance-ids i-0f6dac37c87940ba9 \
+    --instance-ids <YOUR-INSTANCE-ID> \
     --document-name "AWS-RunShellScript" \
     --parameters "commands=[\"su - ssm-user -c 'openclaw agent --agent $AGENT_ID --message \\\"$MESSAGE\\\" --json'\"]" \
     --query 'Command.CommandId' \
@@ -236,7 +236,7 @@ sleep 15
 aws ssm get-command-invocation \
     --region ap-southeast-2 \
     --command-id "$COMMAND_ID" \
-    --instance-id i-0f6dac37c87940ba9 \
+    --instance-id <YOUR-INSTANCE-ID> \
     --query 'StandardOutputContent' \
     --output text
 ```
@@ -372,7 +372,7 @@ openclaw gateway call health --json
 
 ```bash
 # Connect to instance
-aws ssm start-session --region ap-southeast-2 --target i-0f6dac37c87940ba9
+aws ssm start-session --region ap-southeast-2 --target <YOUR-INSTANCE-ID>
 
 # List session directories
 ls -la ~/.openclaw/agents/*/sessions/
