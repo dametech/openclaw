@@ -1,23 +1,30 @@
 # OpenClaw Teams Integration Configuration
-# Copy this file to terraform.tfvars and fill in your values
+# Copy this file to terraform.tfvars and fill in your actual values
 
 aws_region  = "ap-southeast-2"
 aws_profile = "personal"
 environment = "prod"
 
-# VPC Configuration
+# VPC Configuration (DAME-VPC)
 vpc_id = "vpc-XXXXXXXXX"  # Replace with your DAME-VPC ID
 
-# Existing ALB Configuration
-alb_arn          = "arn:aws:elasticloadbalancing:ap-southeast-2:ACCOUNT:loadbalancer/app/openclaw-alb/56373705"
-alb_listener_arn = "arn:aws:elasticloadbalancing:ap-southeast-2:ACCOUNT:listener/app/openclaw-alb/56373705/LISTENER_ID"
+# Public subnets for ALB (need at least 2 in different AZs)
+public_subnet_ids = [
+  "subnet-XXXXXXXXX",  # AZ 1
+  "subnet-XXXXXXXXX",  # AZ 2
+]
+
+# ACM Certificate for HTTPS
+acm_certificate_arn = "arn:aws:acm:ap-southeast-2:ACCOUNT:certificate/CERT_ID"
+# Get existing: aws acm list-certificates --region ap-southeast-2
+# Or create new certificate for your domain
 
 # Kubernetes Worker Node IPs (from au01-0 cluster)
-# Get these with: kubectl get nodes -o wide
+# Get with: kubectl get nodes -o wide --kubeconfig ~/.kube/au01-0.yaml
 k8s_worker_nodes = [
-  "10.42.32.XX",  # talos-cluster-one-worker-w01
-  "10.42.32.XX",  # talos-cluster-one-worker-w02
-  "10.42.32.XX",  # talos-cluster-one-worker-w04
+  "10.42.32.16",  # talos-cluster-one-worker-w01
+  "10.42.32.17",  # talos-cluster-one-worker-w02
+  "10.42.32.19",  # talos-cluster-one-worker-w04
 ]
 
 # Kubernetes NodePort for Teams webhook
@@ -25,6 +32,16 @@ k8s_nodeport = 30978
 
 # Health check configuration
 health_check_path = "/"
+health_check_port = 18789
 
 # Teams webhook path
 teams_webhook_path = "/api/messages"
+
+# ALB settings
+enable_deletion_protection = false  # Set to true for production
+
+# Optional: Route53 DNS
+# Uncomment and configure if you want a custom domain
+# domain_name            = "openclaw.yourdomain.com"
+# create_route53_record  = true
+# route53_zone_id        = "Z0123456789ABC"

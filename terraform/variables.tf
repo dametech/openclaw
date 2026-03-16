@@ -25,47 +25,79 @@ variable "kubeconfig_path" {
 variable "vpc_id" {
   description = "VPC ID for DAME-VPC"
   type        = string
-  default     = "vpc-DAME-VPC"  # Replace with actual VPC ID
+  # Get with: aws ec2 describe-vpcs --filters "Name=tag:Name,Values=DAME-VPC" --query 'Vpcs[0].VpcId' --output text
 }
 
-variable "alb_arn" {
-  description = "ARN of existing ALB for OpenClaw"
-  type        = string
-  default     = "arn:aws:elasticloadbalancing:ap-southeast-2:ACCOUNT:loadbalancer/app/openclaw-alb/56373705"  # Replace with actual ARN
+variable "public_subnet_ids" {
+  description = "Public subnet IDs for ALB (must be in at least 2 AZs)"
+  type        = list(string)
+  # Get with: aws ec2 describe-subnets --filters "Name=vpc-id,Values=VPC_ID" "Name=tag:Type,Values=public"
+  default = []
 }
 
-variable "alb_listener_arn" {
-  description = "ARN of HTTPS listener on ALB"
+variable "acm_certificate_arn" {
+  description = "ARN of ACM certificate for HTTPS listener"
   type        = string
-  # Replace with actual listener ARN
-  # Format: arn:aws:elasticloadbalancing:REGION:ACCOUNT:listener/app/openclaw-alb/ID/LISTENER_ID
+  # Get or create certificate for your domain
+  # Example: arn:aws:acm:ap-southeast-2:ACCOUNT:certificate/CERT_ID
 }
 
 variable "k8s_worker_nodes" {
-  description = "IP addresses of Kubernetes worker nodes"
+  description = "Internal IP addresses of Kubernetes worker nodes"
   type        = list(string)
+  # Worker node IPs from: kubectl get nodes -o wide
   default = [
-    "10.42.XX.XX",  # Replace with actual node IPs from au01-0 cluster
-    "10.42.XX.XX",
-    "10.42.XX.XX",
-    "10.42.XX.XX"
+    "10.42.32.16",  # talos-cluster-one-worker-w01
+    "10.42.32.17",  # talos-cluster-one-worker-w02
+    "10.42.32.19",  # talos-cluster-one-worker-w04 (w03 disabled)
   ]
 }
 
 variable "k8s_nodeport" {
   description = "NodePort for OpenClaw Teams webhook service"
   type        = number
-  default     = 30978  # NodePort for port 3978
+  default     = 30978
 }
 
 variable "health_check_path" {
   description = "Health check path for ALB target group"
   type        = string
-  default     = "/"  # OpenClaw gateway health endpoint
+  default     = "/"
+}
+
+variable "health_check_port" {
+  description = "Port for health checks (OpenClaw gateway)"
+  type        = number
+  default     = 18789
 }
 
 variable "teams_webhook_path" {
   description = "Path for Teams webhook"
   type        = string
   default     = "/api/messages"
+}
+
+variable "enable_deletion_protection" {
+  description = "Enable deletion protection on ALB"
+  type        = bool
+  default     = false  # Set to true for production
+}
+
+variable "domain_name" {
+  description = "Domain name for OpenClaw (optional, for Route53)"
+  type        = string
+  default     = ""
+  # Example: "openclaw.yourdomain.com"
+}
+
+variable "create_route53_record" {
+  description = "Create Route53 A record for ALB"
+  type        = bool
+  default     = false
+}
+
+variable "route53_zone_id" {
+  description = "Route53 hosted zone ID (required if create_route53_record = true)"
+  type        = string
+  default     = ""
 }
