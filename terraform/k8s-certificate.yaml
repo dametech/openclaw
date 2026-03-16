@@ -1,0 +1,88 @@
+# Let's Encrypt Certificate Resource for OpenClaw
+# Managed by cert-manager
+#
+# This file is a template. Update the domain name before applying.
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: openclaw-tls
+  namespace: openclaw
+spec:
+  # The secret where the certificate will be stored
+  secretName: openclaw-tls-secret
+
+  # Let's Encrypt issuer
+  # Use letsencrypt-staging for testing
+  # Use letsencrypt-prod for production
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+
+  # Domain name(s) for the certificate
+  dnsNames:
+    - openclaw.yourdomain.com  # REPLACE with your actual domain
+
+  # Private key configuration
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    rotationPolicy: Always
+
+  # Certificate usages
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+
+  # Renew certificate 30 days before expiry
+  renewBefore: 720h  # 30 days
+
+---
+# ClusterIssuer for Let's Encrypt Staging (for testing)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # Staging server - use for testing to avoid rate limits
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+
+    # Email for expiry notifications
+    email: admin@example.com  # REPLACE with your email
+
+    # Secret to store ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-staging-key
+
+    # HTTP-01 challenge solver
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+
+---
+# ClusterIssuer for Let's Encrypt Production
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Production server - has rate limits!
+    # Limit: 50 certificates per registered domain per week
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+    # Email for expiry notifications
+    email: admin@example.com  # REPLACE with your email
+
+    # Secret to store ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+
+    # HTTP-01 challenge solver
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
