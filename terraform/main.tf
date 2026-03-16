@@ -161,13 +161,13 @@ resource "aws_lb_target_group_attachment" "k8s_nodes" {
   port             = var.k8s_nodeport
 }
 
-# HTTPS Listener (requires ACM certificate)
+# HTTPS Listener (uses ACM certificate from acm-certificate.tf)
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.openclaw.arn
   port              = "443"
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = var.acm_certificate_arn
+  certificate_arn   = aws_acm_certificate.openclaw.arn
 
   default_action {
     type             = "forward"
@@ -177,6 +177,8 @@ resource "aws_lb_listener" "https" {
   tags = {
     Name = "openclaw-https-listener"
   }
+
+  depends_on = [aws_acm_certificate_validation.openclaw]
 }
 
 # HTTP Listener (redirect to HTTPS)

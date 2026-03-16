@@ -35,11 +35,16 @@ variable "public_subnet_ids" {
   default = []
 }
 
-variable "acm_certificate_arn" {
-  description = "ARN of ACM certificate for HTTPS listener"
+variable "domain_name" {
+  description = "Domain name for OpenClaw Teams webhook"
   type        = string
-  # Get or create certificate for your domain
-  # Example: arn:aws:acm:ap-southeast-2:ACCOUNT:certificate/CERT_ID
+  default     = "openclaw.au01-0.dametech.net"
+}
+
+variable "route53_zone_name" {
+  description = "Route53 hosted zone name (e.g., dametech.net)"
+  type        = string
+  default     = "dametech.net"
 }
 
 variable "k8s_worker_nodes" {

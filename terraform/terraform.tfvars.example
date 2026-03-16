@@ -14,10 +14,10 @@ public_subnet_ids = [
   "subnet-XXXXXXXXX",  # AZ 2
 ]
 
-# ACM Certificate for HTTPS
-acm_certificate_arn = "arn:aws:acm:ap-southeast-2:ACCOUNT:certificate/CERT_ID"
-# Get existing: aws acm list-certificates --region ap-southeast-2
-# Or create new certificate for your domain
+# Domain Configuration
+# ACM certificate will be automatically requested and validated
+domain_name        = "openclaw.au01-0.dametech.net"
+route53_zone_name  = "dametech.net"
 
 # Kubernetes Worker Node IPs (from au01-0 cluster)
 # Get with: kubectl get nodes -o wide --kubeconfig ~/.kube/au01-0.yaml
