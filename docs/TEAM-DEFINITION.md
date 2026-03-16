@@ -100,3 +100,44 @@ team.yaml → provision.sh → Running agent team
 - The provisioning script should be idempotent — safe to re-run
 - Team definition should live in this repo as the source of truth
 - On container restart, the PVC retains agent state, but a fresh deploy needs reprovisioning
+
+## Skills & Tools TODO
+
+Each integration should ideally be packaged as an OpenClaw skill for clean, reusable access across agents.
+
+### Current integrations and skill status
+
+| Integration | Current Setup | Skill Available | TODO |
+|-------------|--------------|-----------------|------|
+| **GitHub** | HTTPS + PAT + wrapper | ✅ `github` + `gh-issues` (bundled, needs `gh` CLI) | Install `gh` CLI, configure auth, enable skill |
+| **Jira** | API token + `jira-api.sh` wrapper | ❌ None bundled | Create `jira` skill (based on `trello` skill pattern) |
+| **Slack** | Socket Mode per agent | ✅ `slack` (bundled) | Already active |
+| **1Password** | Not yet deployed | ✅ `1password` (bundled) | Deploy when secrets migration happens |
+
+### Best practices for skills vs tools
+
+**Use a skill when:**
+- The integration has a well-defined API or CLI
+- Multiple agents need the same access pattern
+- You want structured instructions the model can follow (e.g. "create a Jira issue with these fields")
+- The skill can be shared across agents via `~/.openclaw/skills/`
+
+**Use raw exec/wrapper when:**
+- It's a one-off script or quick automation
+- The integration is simple enough that a wrapper script suffices
+- You're prototyping before packaging as a proper skill
+
+**Skill distribution:**
+- **Per-agent skills:** `<workspace>/skills/` — only that agent sees them
+- **Shared skills:** `~/.openclaw/skills/` — all agents on the instance
+- **Bundled skills:** Ship with OpenClaw — always available
+- **ClawHub:** Public registry at https://clawhub.com — install with `clawhub install <slug>`
+
+### Action items
+
+- [ ] **GitHub skill:** Install `gh` CLI in container, run `gh auth login` with PAT, enable bundled `github` skill
+- [ ] **Jira skill:** Author a `jira` skill (model: REST API via curl, similar to bundled `trello` skill). Publish to ClawHub if generic enough.
+- [ ] **1Password skill:** Enable bundled skill when secrets management is deployed
+- [ ] **AWS skill:** Evaluate need — Sanjay works heavily with AWS. Check if a skill exists or create one.
+- [ ] **Kubernetes skill:** Evaluate need — Davo works with K8s. `kubectl` is likely enough but a skill could add structured guidance.
+- [ ] **EdgeX skill:** Create for Eddie — structured guidance for EdgeX Foundry API, device profiles, Modbus config.
