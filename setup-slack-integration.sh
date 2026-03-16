@@ -553,10 +553,7 @@ generate_openclaw_config() {
       "enabled": true,
       "mode": "socket",
       "appToken": "${SLACK_APP_TOKEN}",
-      "botToken": "${SLACK_BOT_TOKEN}",
-      "userAuth": {
-        "mode": "allowlist"
-      }
+      "botToken": "${SLACK_BOT_TOKEN}"
     }
   }
 }
@@ -608,10 +605,7 @@ app-template:
                 "enabled": true,
                 "mode": "socket",
                 "appToken": "${SLACK_APP_TOKEN}",
-                "botToken": "${SLACK_BOT_TOKEN}",
-                "userAuth": {
-                  "mode": "allowlist"
-                }
+                "botToken": "${SLACK_BOT_TOKEN}"
               }
             }
           }
