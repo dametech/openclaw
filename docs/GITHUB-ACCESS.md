@@ -32,7 +32,7 @@ https://x-access-token:<PAT>@github.com
 
 ```ini
 [credential]
-    helper = store --file=/home/node/.openclaw/.git-credentials
+    helper = store --file=~/.openclaw/.git-credentials
 ```
 
 ### Environment
@@ -40,7 +40,7 @@ https://x-access-token:<PAT>@github.com
 Because the container runs with a read-only root filesystem, `~/.gitconfig` is not writable. Instead, git's XDG config lookup is used:
 
 ```
-XDG_CONFIG_HOME=/home/node/.openclaw
+XDG_CONFIG_HOME=~/.openclaw
 ```
 
 This makes git read `~/.openclaw/git/config` as the global config, which points to the credential store. The `XDG_CONFIG_HOME` env var is set in the OpenClaw gateway config (`env` section in `openclaw.json`).
@@ -53,12 +53,12 @@ Each agent's workspace has its own `.git/config` with a unique identity:
 [user]
     name = <Name> (<agent-id>)
     email = <agent-id>@<domain>
-[credential]
-    helper = store --file=/home/node/.openclaw/.git-credentials
 ```
 
+Authentication is handled globally via `XDG_CONFIG_HOME` — no per-agent credential config needed.
+
 This means:
-- **Authentication** is shared (one PAT, all repos)
+- **Authentication** is shared (one PAT, all repos, configured once globally)
 - **Attribution** is unique (each agent's commits show their name/email)
 
 ## Setup Steps
@@ -73,10 +73,10 @@ mkdir -p ~/.openclaw/git
 echo "https://x-access-token:<YOUR_PAT>@github.com" > ~/.openclaw/.git-credentials
 chmod 600 ~/.openclaw/.git-credentials
 
-# Create global git config
+# Create global git config pointing to the credential store
 cat > ~/.openclaw/git/config << 'EOF'
 [credential]
-    helper = store --file=/home/node/.openclaw/.git-credentials
+    helper = store --file=~/.openclaw/.git-credentials
 EOF
 ```
 
@@ -94,7 +94,7 @@ Add to `openclaw.json`:
 
 ### 3. Configure per-agent git identity
 
-For each agent workspace:
+For each agent workspace, set only the identity (authentication is handled globally):
 
 ```bash
 AGENT_ID="myagent"
@@ -104,7 +104,6 @@ WORKSPACE="$HOME/.openclaw/workspace-${AGENT_ID}"
 
 git -C "$WORKSPACE" config user.name "${DISPLAY_NAME} (${AGENT_ID})"
 git -C "$WORKSPACE" config user.email "${AGENT_ID}@${DOMAIN}"
-git -C "$WORKSPACE" config credential.helper "store --file=/home/node/.openclaw/.git-credentials"
 ```
 
 ### 4. Verify
@@ -138,7 +137,7 @@ The `scripts/create-agent.sh` script handles git identity setup automatically wh
 
 Git can't find credentials. Check:
 1. `~/.openclaw/.git-credentials` exists and contains the PAT
-2. `XDG_CONFIG_HOME` is set to `/home/node/.openclaw`
+2. `XDG_CONFIG_HOME` is set to `~/.openclaw` (or the absolute equivalent)
 3. `~/.openclaw/git/config` exists with the credential helper
 
 ### Commits showing wrong author
@@ -148,9 +147,3 @@ Check workspace-level git config:
 git -C ~/.openclaw/workspace-<agent-id> config user.name
 git -C ~/.openclaw/workspace-<agent-id> config user.email
 ```
-
-### Clone works in workspace but not /tmp
-
-The workspace-level credential helper only applies inside the workspace. Ensure either:
-- `XDG_CONFIG_HOME` is set (recommended), or
-- `GIT_CONFIG_GLOBAL` points to a writable gitconfig with the credential helper
