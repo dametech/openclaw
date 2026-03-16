@@ -1,11 +1,11 @@
 # GitHub Access Setup
 
-How GitHub access is configured for all OpenClaw agents, providing per-agent commit attribution across all `dametech` and `sinkers` repositories.
+How GitHub access is configured for OpenClaw agents, providing per-agent commit attribution across all repositories.
 
 ## Architecture
 
 ```
-GitHub (dametech org + sinkers user)
+GitHub (org + user repos)
 │
 ├── HTTPS + PAT authentication (shared token)
 │
@@ -13,19 +13,14 @@ GitHub (dametech org + sinkers user)
 │   └── XDG_CONFIG_HOME=~/.openclaw → git/config
 │
 └── Per-agent git identity (workspace-level .git/config)
-    ├── Claw (main)       → main@dametech.net
-    ├── Davo (davo)        → davo@dametech.net
-    ├── Sanjay (siteconfig) → siteconfig@dametech.net
-    ├── Mia (siteuis)      → siteuis@dametech.net
-    ├── Eddie (edgex)      → edgex@dametech.net
-    └── Jett (minercode)   → minercode@dametech.net
+    └── <agent-id>@<domain>
 ```
 
 ## How It Works
 
 ### Authentication
 
-All agents share a single GitHub Personal Access Token (PAT) stored in a central credentials file. This grants read/write access to all repos under the `dametech` org and `sinkers` user.
+All agents share a single GitHub Personal Access Token (PAT) stored in a central credentials file. This grants read/write access to all repos the token has access to.
 
 **Credential file:** `~/.openclaw/.git-credentials`
 
@@ -56,8 +51,8 @@ Each agent's workspace has its own `.git/config` with a unique identity:
 
 ```ini
 [user]
-    name = Sanjay (siteconfig)
-    email = siteconfig@dametech.net
+    name = <Name> (<agent-id>)
+    email = <agent-id>@<domain>
 [credential]
     helper = store --file=/home/node/.openclaw/.git-credentials
 ```
@@ -65,17 +60,6 @@ Each agent's workspace has its own `.git/config` with a unique identity:
 This means:
 - **Authentication** is shared (one PAT, all repos)
 - **Attribution** is unique (each agent's commits show their name/email)
-
-### Agent Identities
-
-| Agent | Git Name | Email |
-|-------|----------|-------|
-| 🦞 Claw | `Claw (main)` | `main@dametech.net` |
-| ⎈ Davo | `Davo (davo)` | `davo@dametech.net` |
-| 🔧 Sanjay | `Sanjay (siteconfig)` | `siteconfig@dametech.net` |
-| 🎨 Mia | `Mia (siteuis)` | `siteuis@dametech.net` |
-| 📡 Eddie | `Eddie (edgex)` | `edgex@dametech.net` |
-| ⛏️ Jett | `Jett (minercode)` | `minercode@dametech.net` |
 
 ## Setup Steps
 
@@ -113,12 +97,13 @@ Add to `openclaw.json`:
 For each agent workspace:
 
 ```bash
-AGENT_ID="siteconfig"
-DISPLAY_NAME="Sanjay"
+AGENT_ID="myagent"
+DISPLAY_NAME="AgentName"
+DOMAIN="example.com"
 WORKSPACE="$HOME/.openclaw/workspace-${AGENT_ID}"
 
 git -C "$WORKSPACE" config user.name "${DISPLAY_NAME} (${AGENT_ID})"
-git -C "$WORKSPACE" config user.email "${AGENT_ID}@dametech.net"
+git -C "$WORKSPACE" config user.email "${AGENT_ID}@${DOMAIN}"
 git -C "$WORKSPACE" config credential.helper "store --file=/home/node/.openclaw/.git-credentials"
 ```
 
@@ -126,7 +111,7 @@ git -C "$WORKSPACE" config credential.helper "store --file=/home/node/.openclaw/
 
 ```bash
 # Test clone from any directory
-GIT_CONFIG_GLOBAL="" git clone https://github.com/dametech/<repo>.git /tmp/test-clone
+git clone https://github.com/<org>/<repo>.git /tmp/test-clone
 rm -rf /tmp/test-clone
 
 # Verify identity in a workspace
@@ -168,4 +153,4 @@ git -C ~/.openclaw/workspace-<agent-id> config user.email
 
 The workspace-level credential helper only applies inside the workspace. Ensure either:
 - `XDG_CONFIG_HOME` is set (recommended), or
-- `GIT_CONFIG_GLOBAL` points to `~/.openclaw/.gitconfig`
+- `GIT_CONFIG_GLOBAL` points to a writable gitconfig with the credential helper
