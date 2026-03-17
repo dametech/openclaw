@@ -11,7 +11,36 @@ description: Manage, scan, monitor, and report on Bitcoin miner fleets using the
 /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli/miner-cli
 ```
 
-Rebuild if needed: `cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli && go build -o miner-cli .`
+## Installation
+
+**Clone and build (first time):**
+```bash
+git clone https://github.com/sinkers/miner-cli /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
+cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
+make build
+```
+
+**Rebuild after code changes:**
+```bash
+cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
+make build
+# or directly:
+go build -o miner-cli .
+```
+
+**Install to GOPATH/bin (optional, makes it available system-wide):**
+```bash
+cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
+make install
+# binary lands at $(go env GOPATH)/bin/miner-cli
+```
+
+**Pre-push checks (run before committing changes):**
+```bash
+make check   # fmt + vet + lint + test
+```
+
+Requires Go 1.24+. Module: `github.com/sinkers/miner-cli`
 
 ## Site Map
 
