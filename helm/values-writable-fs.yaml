@@ -1,0 +1,28 @@
+#
+# values-writable-fs.yaml — Enable writable root filesystem for tool discovery phase
+#
+# Usage: merge with your base values when deploying:
+#   helm upgrade openclaw openclaw-community/openclaw \
+#     --namespace openclaw \
+#     --values /path/to/base-values.yaml \
+#     --values /path/to/values-writable-fs.yaml
+#
+# This enables agents to install tools on-demand via apt-get, pip3, npm, etc.
+# Tools installed to the root filesystem are EPHEMERAL — they vanish on pod restart.
+# Tools installed to ~/.openclaw/ (PVC) persist across restarts.
+#
+# IMPORTANT: All agents are instructed to log every tool install to
+# ~/.openclaw/tool-installs.log using ~/.openclaw/bin/log-install.sh
+# This log will be used to build the final locked-down container image.
+#
+# Once the tool list is stable, switch back to read-only root filesystem
+# and use either an init container or custom image (see values-dev-tools.yaml).
+#
+
+app-template:
+  controllers:
+    main:
+      containers:
+        main:
+          securityContext:
+            readOnlyRootFilesystem: false

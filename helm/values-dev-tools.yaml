@@ -1,0 +1,74 @@
+#
+# values-dev-tools.yaml — Helm values overlay for dev tool init container
+#
+# Usage: merge with your base values when deploying:
+#   helm upgrade openclaw openclaw-community/openclaw \
+#     --namespace openclaw \
+#     --values /path/to/base-values.yaml \
+#     --values /path/to/values-dev-tools.yaml
+#
+# This adds an init container that installs dev tools to the PVC-backed
+# ~/.openclaw/bin directory before the main container starts.
+#
+# The init container:
+#   - Runs install-dev-tools.sh from a ConfigMap
+#   - Writes binaries to /data/bin (mapped to ~/.openclaw/bin on PVC)
+#   - Skips tools already at the pinned version (idempotent)
+#   - Uses debian:bookworm-slim for curl, unzip, tar
+#
+# PVC safety: The script only writes to bin/, tools/, and .tool-versions/
+#   under the PVC mount. It never touches agent configs, workspaces, or
+#   session data.
+#
+
+app-template:
+  controllers:
+    main:
+      initContainers:
+        init-dev-tools:
+          image:
+            repository: debian
+            tag: bookworm-slim
+          command:
+            - /bin/bash
+            - -c
+            - |
+              apt-get update -qq && apt-get install -y -qq curl unzip tar gzip
+              bash /scripts/install-dev-tools.sh
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: dev-tools-script
+              mountPath: /scripts
+
+      containers:
+        main:
+          env:
+            # Prepend PVC bin dir to PATH so tools are found
+            - name: PATH
+              value: "/home/node/.openclaw/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+            # Go needs GOPATH on writable storage
+            - name: GOPATH
+              value: "/home/node/.openclaw/go"
+            - name: GOROOT
+              value: "/home/node/.openclaw/tools/go"
+
+  configMaps:
+    dev-tools-script:
+      data:
+        install-dev-tools.sh: |
+          # This will be populated from scripts/install-dev-tools.sh
+          # For production, use: --set-file to inject the script, or
+          # copy the script content here.
+          #
+          # Example with helm install:
+          #   --set-file 'app-template.configMaps.dev-tools-script.data.install-dev-tools\.sh=scripts/install-dev-tools.sh'
+
+  persistence:
+    dev-tools-script:
+      enabled: true
+      type: configMap
+      name: '{{ .Release.Name }}-dev-tools-script'
+      globalMounts:
+        - path: /scripts
+          readOnly: true
