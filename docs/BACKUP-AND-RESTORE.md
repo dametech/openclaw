@@ -51,15 +51,20 @@ If the PVC is deleted or we deploy to a new cluster:
 
 ### Tier 1: Config as Code (Git)
 
-The `dametech/openclaw` repo should be the source of truth for everything except secrets:
+The `dametech/openclaw` repo is the source of truth for everything except secrets:
 
 ```
 dametech/openclaw/
-├── openclaw.json.template    → Config with SecretRef placeholders
+├── openclaw-deploy.sh        → Helm deployment script
+├── openclaw-delete.sh        → Cleanup script
+├── openclaw-portforward.sh   → Port forwarding helper
+├── terraform/                → Infrastructure (K8s service, Route53, ACM certs)
+├── setup-slack-integration.sh → Slack setup automation
+├── openclaw.json.template    → Config with SecretRef placeholders (TODO)
 ├── templates/                → Agent workspace templates (AGENTS.md, etc.)
-├── scripts/                  → Setup and provisioning scripts
+├── scripts/                  → Agent creation and wiring scripts
 ├── docs/                     → All documentation
-└── team.yaml                 → Team definition (future)
+└── team.yaml                 → Team definition (TODO)
 ```
 
 **What to commit:**
