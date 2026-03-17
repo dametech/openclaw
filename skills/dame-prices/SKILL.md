@@ -14,7 +14,7 @@ Use this skill when asked about AEMO energy prices, NEM dispatch prices, spot pr
 - **Granularity:** 5-minute dispatch intervals
 - **InfluxDB org ID:** `c4789450c487eeba` (use `orgID` param, not org name — org name lookup is broken on this instance)
 
-> ⚠️ **Important:** Always query using `orgID=c4789450c487eeba` in the URL, NOT `org=Dame`. The org name lookup fails on this Timestream instance.
+> ⚠️ **Important:** Always query using `orgID=c4789450c487eeba` in the URL, NOT `org=Dame`. The org name lookup fails on this InfluxDB instance.
 
 ## Schema
 

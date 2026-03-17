@@ -1,23 +1,27 @@
-#!/usr/bin/env python3
-"""
+#!/usr/bin/env python3"""
 enable_recording.py - Find a Teams online meeting by joinWebUrl and enable auto-recording.
 
 Usage:
-  python3 enable_recording.py <joinWebUrl> <access_token>
+  ACCESS_TOKEN=<token> python3 enable_recording.py <joinWebUrl>
 
-The joinWebUrl should be taken directly from the event response's onlineMeeting.joinUrl field.
+The joinWebUrl should be taken from the event response's onlineMeeting.joinUrl field.
+The access token is read from the ACCESS_TOKEN environment variable (not a CLI arg).
 """
 import sys
+import os
 import json
 import requests
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: enable_recording.py <joinWebUrl> <access_token>")
+    if len(sys.argv) != 2:
+        print("Usage: ACCESS_TOKEN=<token> enable_recording.py <joinWebUrl>", file=sys.stderr)
         sys.exit(1)
 
     join_url = sys.argv[1]
-    access_token = sys.argv[2]
+    access_token = os.environ.get("ACCESS_TOKEN")
+    if not access_token:
+        print("Error: ACCESS_TOKEN environment variable is not set.", file=sys.stderr)
+        sys.exit(1)
 
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -40,7 +44,7 @@ def main():
     meeting = data['value'][0]
     meeting_id = meeting['id']
     print(f"Found meeting: {meeting.get('subject')}")
-    print(f"recordAutomatically (before): {meeting['recordAutomatically']}")
+    print(f"recordAutomatically (before): {meeting.get('recordAutomatically')}")
 
     # Step 2: PATCH to enable auto-recording
     resp2 = requests.patch(
@@ -51,8 +55,8 @@ def main():
     resp2.raise_for_status()
     result = resp2.json()
 
-    print(f"recordAutomatically (after): {result['recordAutomatically']}")
-    if result['recordAutomatically']:
+    print(f"recordAutomatically (after): {result.get('recordAutomatically')}")
+    if result.get('recordAutomatically'):
         print("✅ Auto-recording enabled successfully")
     else:
         print("❌ WARNING: recordAutomatically still False after PATCH")

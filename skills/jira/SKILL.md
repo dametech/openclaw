@@ -17,7 +17,7 @@ Read the full reference at `references/jira.md`.
 
 ```python
 import sys, json, os
-sys.path.insert(0, "<skill-dir>/scripts")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../scripts"))
 from adf import JiraClient, heading, p, pb, bullet, ordered, code_block, panel, rule
 
 with open(os.path.expanduser("~/.openclaw/.jira-credentials/4ndr3w.json")) as f:

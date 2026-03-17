@@ -36,7 +36,8 @@ class JiraClient:
             method=method,
         )
         with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read())
+            raw = resp.read()
+            return json.loads(raw) if raw else None
 
     def add_comment(self, issue_key: str, content: list) -> dict:
         """Post an ADF-formatted comment to a Jira issue."""
@@ -45,12 +46,7 @@ class JiraClient:
 
     def delete_comment(self, issue_key: str, comment_id: str) -> None:
         """Delete a comment by ID."""
-        req = urllib.request.Request(
-            f"{self.base_url}/rest/api/3/issue/{issue_key}/comment/{comment_id}",
-            headers={"Authorization": f"Basic {self._auth}"},
-            method="DELETE",
-        )
-        urllib.request.urlopen(req)
+        self._request("DELETE", f"/rest/api/3/issue/{issue_key}/comment/{comment_id}")
 
     def get_comments(self, issue_key: str) -> list:
         """Return list of comment dicts for an issue."""

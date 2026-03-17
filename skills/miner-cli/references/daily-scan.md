@@ -14,7 +14,7 @@ Run at 8:15 AM AEDT daily via cron. Follow these steps to run manually.
 
 3. **Fetch tank location data:**
    ```bash
-   curl -sk https://control-tank-lookup.au01-1a.dametech.net/au01-1
+   curl -s https://control-tank-lookup.au01-1a.dametech.net/au01-1
    ```
    For each error miner, look up MAC in the JSON response to get:
    - `rackId` → tank name

@@ -67,14 +67,12 @@ From the response, capture `onlineMeeting.joinUrl`.
 Use the bundled script to avoid meeting ID encoding issues (copy-pasting the ID manually causes subtle encoding errors):
 
 ```bash
-python3 <skill_dir>/scripts/enable_recording.py "<joinUrl from Step 2>" "<srumm4st3r_access_token>"
-```
-
-To get the access token, read it from `/home/ssm-user/.openclaw/ms-graph-query-tokens.json`:
-```python
 import json
 token = json.load(open('/home/ssm-user/.openclaw/ms-graph-query-tokens.json'))['delegated']['srumm4st3r']['access_token']
+ACCESS_TOKEN="$token" python3 <skill_dir>/scripts/enable_recording.py "<joinUrl from Step 2>"
 ```
+
+The token is passed via environment variable (not as a CLI arg) to avoid exposure in process listings and shell history.
 
 The script will print `✅ Auto-recording enabled successfully` on success. If it fails, do not proceed — recording will not work.
 
