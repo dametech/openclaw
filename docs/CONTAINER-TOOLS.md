@@ -4,7 +4,44 @@
 
 The OpenClaw container runs with a **read-only root filesystem** (good security practice), which means we can't `apt-get install` or drop binaries into `/usr/local/bin` at runtime. But agents need dev tools — `kubectl`, `helm`, `go`, `gh`, `aws`, `terraform`, etc.
 
-## Solution: Init Container + PVC
+## Current Approach: Writable Filesystem (Discovery Phase)
+
+We've temporarily enabled a writable root filesystem so agents can install tools on-demand and we can discover what's actually needed before locking things down.
+
+### How it works
+1. `values-writable-fs.yaml` sets `readOnlyRootFilesystem: false`
+2. Agents can `apt-get install`, `pip3 install`, etc. as needed
+3. **Every install must be logged** to `~/.openclaw/tool-installs.log` via `~/.openclaw/bin/log-install.sh`
+4. Once the tool list stabilises, we switch to either init container or custom image
+
+### Install logging
+All agents have a **Tool Installation Policy** in their `AGENTS.md` requiring them to log installs:
+
+```bash
+# Install the tool
+apt-get install -y snmpwalk
+
+# Log it (required!)
+~/.openclaw/bin/log-install.sh apt snmp "SNMP queries to mining hardware"
+```
+
+Log format: `TIMESTAMP | AGENT | METHOD | PACKAGE | PURPOSE`
+
+### Caveats
+- Root filesystem tools are **ephemeral** — lost on pod restart
+- PVC-installed tools (`~/.openclaw/bin/`) persist
+- Slightly larger attack surface vs read-only
+- Non-reproducible — depends on what agents installed at runtime
+
+### Transition plan
+1. Run writable for 2-4 weeks
+2. Review `~/.openclaw/tool-installs.log` for the complete tool list
+3. Build either init container (`values-dev-tools.yaml`) or custom Dockerfile
+4. Switch back to `readOnlyRootFilesystem: true`
+
+---
+
+## Future Approach: Init Container + PVC
 
 We use a Kubernetes init container to install tools to the **PVC-backed** `~/.openclaw/` directory before the main container starts.
 
