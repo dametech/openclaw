@@ -1,11 +1,11 @@
 ---
 name: miner-cli
-description: Manage, scan, monitor, and report on Bitcoin miner fleets using the miner-cli tool. Use when asked to scan miners, check miner status, look up error codes, run the daily miner scan, post miner status to Teams, restart miners, switch pools, or do anything related to the AU01 mining operation. Triggers on phrases like "run a miner scan", "check the miners", "how many miners are down", "run the daily scan", "what errors do we have", "restart the miners", "post miner status", etc.
+description: Manage, scan, monitor, and report on Bitcoin miner fleets using the miner-cli tool. Use when asked to scan miners, check miner status, look up error codes, run the daily miner scan, post miner status to Teams, restart miners, switch pools, or anything related to mining operations. Supports site-name-based scanning (e.g. "scan au01-1" maps to the correct IP ranges automatically). Triggers on phrases like "run a miner scan", "scan au01", "check the miners", "how many miners are down", "run the daily scan", "what errors do we have", "restart the miners", "post miner status", etc.
 ---
 
 # miner-cli Skill
 
-## Binary Location
+## Binary
 
 ```
 /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli/miner-cli
@@ -13,60 +13,76 @@ description: Manage, scan, monitor, and report on Bitcoin miner fleets using the
 
 Rebuild if needed: `cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli && go build -o miner-cli .`
 
-## AU01 Subnets
+## Site Map
 
-| Subnet | Site |
-|--------|------|
-| 10.45.78.0/24 | AU01-1a MDC1 |
-| 10.45.79.0/24 | AU01-1a MDC2 |
+When a user names a site, expand to the corresponding IP ranges automatically:
 
-## Common Commands
+| Site Name | IP Ranges | Description |
+|-----------|-----------|-------------|
+| au01-1 | 10.45.78.0/24 10.45.79.0/24 | AU01-1 — MDC1 + MDC2 |
+| au01-1a | 10.45.78.0/24 | AU01-1a — MDC1 only |
+| au01-1b | 10.45.79.0/24 | AU01-1b — MDC2 only |
+
+Example: "run a miner scan on au01-1" →
+```bash
+miner-cli scan 10.45.78.0/24 10.45.79.0/24 --check-errors
+```
+
+## Scan Command (primary use)
 
 ```bash
-# Scan subnet with error detection (standard daily use)
-miner-cli scan 10.45.78.0/24 --check-errors
-miner-cli scan 10.45.79.0/24 --check-errors
+# Standard scan with error detection — always use --check-errors
+miner-cli scan <IP_RANGES...> --check-errors
 
-# Restart miners
-miner-cli restart 10.45.78.0/24
+# With verbose output
+miner-cli scan 10.45.78.0/24 --check-errors -v
 
-# Pool management
-miner-cli pools 10.45.78.0/24
-miner-cli switchpool 10.45.78.0/24 --pool 1
+# With switch port mapping (SNMP)
+miner-cli scan 10.45.78.0/24 --check-errors --switch <switch-ip> --community public
+
+# With Braiins auth for MAC retrieval
+miner-cli scan 10.45.78.0/24 --check-errors --braiins-user root --braiins-pass root
 
 # JSON output for scripting
-miner-cli scan 10.45.78.0/24 -o json
+miner-cli scan 10.45.78.0/24 --check-errors -o json
+
+# With chip temps (slower)
+miner-cli scan 10.45.78.0/24 --check-errors --scan-temps
 ```
 
-## Error Code Format
-
-After the scan update (2026-03-17), error codes appear **at the top of output** formatted as `[CODE] description` — e.g. `[541] Slot1 chip id error`.
-
-See `references/error-codes.md` for the full error code reference.
-
-## Daily Miner Scan — AU01
-
-The daily scan runs via cron at **8:15 AM AEDT** (cron id: `a7276b20-9d5e-45df-91a8-68cd25d71b7e`).
-
-To run manually and post to Ops Stand Up, follow the steps in `references/daily-scan.md`.
-
-To run as a **test** (no Teams post), just run the scan commands directly and show output inline.
-
-## Location Lookup
-
-Tank/row/position data for AU01:
+## Other Commands
 
 ```bash
-curl -sk https://control-tank-lookup.au01-1a.dametech.net/au01-1
+miner-cli summary <IPs>          # Mining summary stats
+miner-cli devs <IPs>             # Device/hashboard info
+miner-cli pools <IPs>            # Pool config and status
+miner-cli stats <IPs>            # Detailed statistics
+miner-cli restart <IPs>          # Restart miners
+miner-cli quit <IP>              # Stop a miner (use with caution)
+miner-cli switchpool <IPs> --pool <id>   # Switch active pool
+miner-cli addpool <IPs> --url <url> --user <u> --pass <p>
+miner-cli enablepool / disablepool / removepool <IPs> --pool <id>
 ```
 
-Returns JSON with MAC → `{rackId (tank name), row, index (position)}` mapping.
+## Global Flags
 
-## Error Trend Tracking
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-o` | color | Output format: color, json, table |
+| `-t` | 2 | Connection timeout (seconds) |
+| `-w` | 255 | Concurrent workers |
+| `-v` | false | Verbose output |
+| `--show-mac` | false | Display MAC addresses |
+| `-p` | 4028 | CGMiner API port |
 
-Yesterday's error baseline is stored at:
-```
-/home/ssm-user/.openclaw/workspace-4ndr3w/memory/error-trend.json
-```
+## Error Codes
 
-Read before posting daily report to include trend line (e.g. "14 errors ▲ +2 vs yesterday's 12").
+After the 2026-03-17 update, errors appear at the **top** of scan output as `[CODE] description`.
+See `references/error-codes.md` for the full reference.
+
+## Daily Scan
+
+The automated daily scan runs at **8:15 AM AEDT**. For manual runs and the Teams posting workflow, see `references/daily-scan.md`.
+
+**Test run** (no Teams post): just run the scan commands and show output inline.
+**Live run**: follow the full workflow in `references/daily-scan.md`.
