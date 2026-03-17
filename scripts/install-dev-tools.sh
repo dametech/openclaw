@@ -38,7 +38,7 @@ GO_VERSION="1.24.1"
 GH_VERSION="2.69.0"
 KUBECTL_VERSION="1.33.0"
 HELM_VERSION="3.17.3"
-AWS_CLI_VERSION="2"           # AWS CLI v2 (latest within v2)
+AWS_CLI_VERSION="2.27.22"     # AWS CLI v2 (pinned)
 OP_VERSION="2.30.3"
 JQ_VERSION="1.7.1"
 YQ_VERSION="4.45.1"
@@ -111,8 +111,7 @@ fi
 if need_install helm "$HELM_VERSION"; then
     log "Installing helm $HELM_VERSION..."
     curl -fsSL "https://get.helm.sh/helm-v${HELM_VERSION}-${OS}-${ARCH}.tar.gz" \
-        | tar -xzf - -C "$TMPDIR" "${OS}-${ARCH}/helm"
-    mv "$TMPDIR/${OS}-${ARCH}/helm" "$INSTALL_DIR/helm"
+        | tar -xzf - -O "${OS}-${ARCH}/helm" > "$INSTALL_DIR/helm"
     chmod +x "$INSTALL_DIR/helm"
     mark_installed helm "$HELM_VERSION"
     log "helm $HELM_VERSION ✓"
@@ -124,8 +123,7 @@ fi
 if need_install gh "$GH_VERSION"; then
     log "Installing gh $GH_VERSION..."
     curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_${OS}_${ARCH}.tar.gz" \
-        | tar -xzf - -C "$TMPDIR"
-    mv "$TMPDIR/gh_${GH_VERSION}_${OS}_${ARCH}/bin/gh" "$INSTALL_DIR/gh"
+        | tar -xzf - -O "gh_${GH_VERSION}_${OS}_${ARCH}/bin/gh" > "$INSTALL_DIR/gh"
     chmod +x "$INSTALL_DIR/gh"
     mark_installed gh "$GH_VERSION"
     log "gh $GH_VERSION ✓"
@@ -152,7 +150,7 @@ if need_install terraform "$TERRAFORM_VERSION"; then
     log "Installing terraform $TERRAFORM_VERSION..."
     curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_${OS}_${ARCH}.zip" \
         -o "$TMPDIR/terraform.zip"
-    cd "$TMPDIR" && unzip -q terraform.zip && cd -
+    (cd "$TMPDIR" && unzip -q terraform.zip)
     mv "$TMPDIR/terraform" "$INSTALL_DIR/terraform"
     chmod +x "$INSTALL_DIR/terraform"
     mark_installed terraform "$TERRAFORM_VERSION"
@@ -165,8 +163,7 @@ fi
 if need_install kustomize "$KUSTOMIZE_VERSION"; then
     log "Installing kustomize $KUSTOMIZE_VERSION..."
     curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_${OS}_${ARCH}.tar.gz" \
-        | tar -xzf - -C "$TMPDIR"
-    mv "$TMPDIR/kustomize" "$INSTALL_DIR/kustomize"
+        | tar -xzf - -O "kustomize" > "$INSTALL_DIR/kustomize"
     chmod +x "$INSTALL_DIR/kustomize"
     mark_installed kustomize "$KUSTOMIZE_VERSION"
     log "kustomize $KUSTOMIZE_VERSION ✓"
@@ -179,7 +176,7 @@ if need_install op "$OP_VERSION"; then
     log "Installing 1Password CLI $OP_VERSION..."
     curl -fsSL "https://cache.agilebits.com/dist/1P/op2/pkg/v${OP_VERSION}/op_${OS}_${ARCH}_v${OP_VERSION}.zip" \
         -o "$TMPDIR/op.zip"
-    cd "$TMPDIR" && unzip -q op.zip && cd -
+    (cd "$TMPDIR" && unzip -q op.zip)
     mv "$TMPDIR/op" "$INSTALL_DIR/op"
     chmod +x "$INSTALL_DIR/op"
     mark_installed op "$OP_VERSION"
@@ -193,9 +190,9 @@ if need_install aws "$AWS_CLI_VERSION"; then
     log "Installing AWS CLI v2..."
     curl -fsSL "https://awscli.amazonaws.com/awscli-exe-${OS}-x86_64.zip" \
         -o "$TMPDIR/awscliv2.zip"
-    cd "$TMPDIR" && unzip -q awscliv2.zip && cd -
-    # Install to tools dir (AWS CLI is not a single binary)
-    "$TMPDIR/aws/install" --install-dir "$TOOLS_DIR/aws-cli" --bin-dir "$INSTALL_DIR" --update 2>/dev/null || \
+    (cd "$TMPDIR" && unzip -q awscliv2.zip)
+    # Clean previous install to avoid --update ambiguity
+    rm -rf "$TOOLS_DIR/aws-cli"
     "$TMPDIR/aws/install" --install-dir "$TOOLS_DIR/aws-cli" --bin-dir "$INSTALL_DIR"
     mark_installed aws "$AWS_CLI_VERSION"
     log "AWS CLI v2 ✓"
@@ -206,11 +203,13 @@ fi
 # ── Summary ────────────────────────────────────────────────────────
 log ""
 log "Installation complete. Installed versions:"
+shopt -s nullglob
 for marker in "$MARKER_DIR"/*.version; do
     tool=$(basename "$marker" .version)
     version=$(cat "$marker")
     log "  $tool: $version"
 done
+shopt -u nullglob
 
 log ""
 log "Tools directory: $INSTALL_DIR"

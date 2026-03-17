@@ -33,7 +33,7 @@ app-template:
             - /bin/bash
             - -c
             - |
-              apt-get update -qq && apt-get install -y -qq curl unzip tar gzip >/dev/null 2>&1
+              apt-get update -qq && apt-get install -y -qq curl unzip tar gzip
               bash /scripts/install-dev-tools.sh
           volumeMounts:
             - name: data
@@ -68,7 +68,7 @@ app-template:
     dev-tools-script:
       enabled: true
       type: configMap
-      name: openclaw-dev-tools-script
+      name: '{{ .Release.Name }}-dev-tools-script'
       globalMounts:
         - path: /scripts
           readOnly: true
