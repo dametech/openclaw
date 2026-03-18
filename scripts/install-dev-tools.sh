@@ -19,6 +19,7 @@
 #   - yq (YAML processor)
 #   - terraform (Infrastructure as Code)
 #   - kustomize (Kubernetes manifest customization)
+#   - codex (OpenAI Codex CLI for AI-assisted coding)
 #
 # Version pinning: Update the variables below to change versions.
 # Architecture: x86_64 (amd64) — update if running on ARM.
@@ -198,6 +199,20 @@ if need_install aws "$AWS_CLI_VERSION"; then
     log "AWS CLI v2 ✓"
 else
     log "AWS CLI v2 already installed, skipping"
+fi
+
+# ── OpenAI Codex CLI ───────────────────────────────────────────────
+CODEX_VERSION="0.115.0"
+if need_install codex "$CODEX_VERSION"; then
+    log "Installing OpenAI Codex CLI $CODEX_VERSION..."
+    NPM_PREFIX="$TOOLS_DIR/npm-global"
+    mkdir -p "$NPM_PREFIX"
+    npm install -g "@openai/codex@$CODEX_VERSION" --prefix "$NPM_PREFIX" 2>&1 | tail -1
+    ln -sf "$NPM_PREFIX/bin/codex" "$INSTALL_DIR/codex"
+    mark_installed codex "$CODEX_VERSION"
+    log "Codex CLI $CODEX_VERSION ✓"
+else
+    log "Codex CLI $CODEX_VERSION already installed, skipping"
 fi
 
 # ── Summary ────────────────────────────────────────────────────────

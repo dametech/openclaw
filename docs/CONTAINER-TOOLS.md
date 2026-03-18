@@ -123,6 +123,7 @@ Pod Start
 | yq | 4.45.1 | ~10MB | YAML processing |
 | terraform | 1.11.3 | ~80MB | Infrastructure as Code |
 | kustomize | 5.6.0 | ~20MB | Kubernetes manifest customization |
+| codex | 0.115.0 | ~30MB | OpenAI Codex CLI for AI-assisted coding |
 
 **Total: ~1GB** on PVC (7.5GB free currently)
 
