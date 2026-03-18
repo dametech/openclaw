@@ -1,105 +1,118 @@
 #!/bin/bash
 #
-# setup-1password.sh — Configure 1Password service account for OpenClaw secrets
+# setup-1password.sh — Create/refresh auth-profiles.json for all agents from 1Password
+#
+# Pulls the Anthropic API key from 1Password and writes auth-profiles.json
+# for every agent. Run this after a fresh deploy or if auth files are lost.
 #
 # Prerequisites:
-#   - kubectl access to the openclaw namespace
-#   - A 1Password service account token
-#   - op CLI installed (for local testing)
+#   - OP_SERVICE_ACCOUNT_TOKEN set in environment
+#   - op CLI available at ~/.openclaw/bin/op or on PATH
+#   - Access to the "Infrastructure" vault in 1Password
 #
 # Usage:
-#   ./scripts/setup-1password.sh
-#   ./scripts/setup-1password.sh --token "ops_eyJ..."
-#   OP_SERVICE_ACCOUNT_TOKEN="ops_eyJ..." ./scripts/setup-1password.sh
+#   ./setup-1password.sh              # auto-detect agents
+#   ./setup-1password.sh davo edgex   # specific agents only
 #
 
-set -e
+set -euo pipefail
 
-KUBECONFIG_PATH="${KUBECONFIG:-${HOME}/.kube/au01-0.yaml}"
-NAMESPACE="openclaw"
-SECRET_NAME="openclaw-1password"
+# ── Config ─────────────────────────────────────────────────────────
+OPENCLAW_DIR="${HOME}/.openclaw"
+AGENTS_DIR="${OPENCLAW_DIR}/agents"
+OP_BIN="${OPENCLAW_DIR}/bin/op"
+VAULT="Infrastructure"
+ITEM="Anthropic API Key Openclaw"
+FIELD="notesPlain"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# ── Helpers ────────────────────────────────────────────────────────
+log() { echo "[1password-setup] $*"; }
+err() { echo "[1password-setup] ERROR: $*" >&2; }
 
-log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+# ── Preflight ──────────────────────────────────────────────────────
+if [ -z "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+    err "OP_SERVICE_ACCOUNT_TOKEN is not set"
+    exit 1
+fi
 
-# Parse args
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    --token) OP_TOKEN="$2"; shift 2 ;;
-    --namespace) NAMESPACE="$2"; shift 2 ;;
-    *) log_error "Unknown arg: $1"; exit 1 ;;
-  esac
+# Find op binary
+OP=""
+if [ -x "$OP_BIN" ]; then
+    OP="$OP_BIN"
+elif command -v op &>/dev/null; then
+    OP="op"
+else
+    err "op CLI not found at $OP_BIN or on PATH"
+    exit 1
+fi
+
+log "Using op CLI: $OP ($($OP --version))"
+
+# ── Verify 1Password access ───────────────────────────────────────
+log "Verifying 1Password access..."
+if ! $OP whoami &>/dev/null; then
+    err "Cannot authenticate with 1Password. Check OP_SERVICE_ACCOUNT_TOKEN."
+    exit 1
+fi
+
+# ── Fetch API key ──────────────────────────────────────────────────
+log "Fetching Anthropic API key from vault '$VAULT'..."
+API_KEY=$($OP item get "$ITEM" --vault "$VAULT" --fields "$FIELD" 2>/dev/null)
+
+if [ -z "$API_KEY" ]; then
+    err "Failed to fetch API key from 1Password (vault: $VAULT, item: $ITEM, field: $FIELD)"
+    exit 1
+fi
+
+log "API key fetched (${#API_KEY} chars)"
+
+# ── Determine agents ──────────────────────────────────────────────
+if [ $# -gt 0 ]; then
+    AGENTS=("$@")
+else
+    # Auto-detect from agents directory
+    AGENTS=()
+    for dir in "$AGENTS_DIR"/*/; do
+        if [ -d "$dir" ]; then
+            agent=$(basename "$dir")
+            AGENTS+=("$agent")
+        fi
+    done
+fi
+
+if [ ${#AGENTS[@]} -eq 0 ]; then
+    err "No agents found in $AGENTS_DIR"
+    exit 1
+fi
+
+log "Agents: ${AGENTS[*]}"
+
+# ── Write auth-profiles.json ──────────────────────────────────────
+for agent in "${AGENTS[@]}"; do
+    agent_dir="$AGENTS_DIR/$agent/agent"
+    auth_file="$agent_dir/auth-profiles.json"
+
+    mkdir -p "$agent_dir"
+
+    cat > "$auth_file" << EOF
+{
+  "version": 1,
+  "profiles": {
+    "anthropic:claude-cli": {
+      "type": "api_key",
+      "mode": "static",
+      "key": "$API_KEY",
+      "provider": "anthropic"
+    }
+  }
+}
+EOF
+
+    chmod 600 "$auth_file"
+    log "  ✓ $agent"
 done
 
-# Resolve token
-OP_TOKEN="${OP_TOKEN:-$OP_SERVICE_ACCOUNT_TOKEN}"
-if [ -z "$OP_TOKEN" ]; then
-  echo -n "Enter 1Password service account token (ops_...): "
-  read -rs OP_TOKEN
-  echo
-fi
-
-if [[ ! "$OP_TOKEN" =~ ^ops_ ]]; then
-  log_error "Token must start with 'ops_'"
-  exit 1
-fi
-
-export KUBECONFIG="$KUBECONFIG_PATH"
-
-# Create/update the k8s secret
-log_info "Creating Kubernetes secret '${SECRET_NAME}' in namespace '${NAMESPACE}'..."
-kubectl create secret generic "$SECRET_NAME" \
-  --namespace "$NAMESPACE" \
-  --from-literal=OP_SERVICE_ACCOUNT_TOKEN="$OP_TOKEN" \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-log_info "Secret '${SECRET_NAME}' created/updated."
-
-# Check if deployment exists and patch it
-if kubectl get deployment openclaw -n "$NAMESPACE" &>/dev/null; then
-  log_info "Patching OpenClaw deployment to mount 1Password secret..."
-
-  # Check if envFrom already references the secret
-  EXISTING=$(kubectl get deployment openclaw -n "$NAMESPACE" \
-    -o jsonpath='{.spec.template.spec.containers[0].envFrom}' 2>/dev/null || echo "")
-
-  if echo "$EXISTING" | grep -q "$SECRET_NAME"; then
-    log_info "Deployment already references ${SECRET_NAME}, skipping patch."
-  else
-    kubectl patch deployment openclaw -n "$NAMESPACE" --type=json -p="[
-      {
-        \"op\": \"add\",
-        \"path\": \"/spec/template/spec/containers/0/envFrom/-\",
-        \"value\": {
-          \"secretRef\": {
-            \"name\": \"${SECRET_NAME}\"
-          }
-        }
-      }
-    ]"
-    log_info "Deployment patched. Pod will restart with 1Password token available."
-  fi
-else
-  log_warn "OpenClaw deployment not found. Add the secret reference to your Helm values (see below)."
-fi
-
-echo ""
-echo "============================================"
-log_info "1Password setup complete! 🔐"
-echo "============================================"
-echo ""
-echo "The OP_SERVICE_ACCOUNT_TOKEN is now available as an env var in the pod."
-echo ""
-echo "Next steps:"
-echo "  1. Verify the pod restarted:  kubectl get pods -n ${NAMESPACE}"
-echo "  2. Exec into pod and test:    kubectl exec -n ${NAMESPACE} deploy/openclaw -c main -- op vault list"
-echo "  3. Configure OpenClaw secrets: kubectl exec -n ${NAMESPACE} deploy/openclaw -c main -- openclaw secrets configure"
-echo ""
-echo "Or add to your Helm values permanently (see helm/values-1password.yaml)"
-echo ""
+# ── Done ───────────────────────────────────────────────────────────
+log ""
+log "Auth profiles written for ${#AGENTS[@]} agents."
+log "Run 'openclaw secrets reload' or restart the pod to pick up changes."
