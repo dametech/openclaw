@@ -188,7 +188,7 @@ fi
 # ── AWS CLI v2 ─────────────────────────────────────────────────────
 if need_install aws "$AWS_CLI_VERSION"; then
     log "Installing AWS CLI v2..."
-    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-${OS}-x86_64.zip" \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-${OS}-x86_64-${AWS_CLI_VERSION}.zip" \
         -o "$TMPDIR/awscliv2.zip"
     (cd "$TMPDIR" && unzip -q awscliv2.zip)
     # Clean previous install to avoid --update ambiguity
