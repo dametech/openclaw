@@ -19,6 +19,7 @@
 #   - yq (YAML processor)
 #   - terraform (Infrastructure as Code)
 #   - kustomize (Kubernetes manifest customization)
+#   - codex (OpenAI Codex CLI for AI-assisted coding)
 #
 # Version pinning: Update the variables below to change versions.
 # Architecture: x86_64 (amd64) — update if running on ARM.
@@ -38,7 +39,7 @@ GO_VERSION="1.24.1"
 GH_VERSION="2.69.0"
 KUBECTL_VERSION="1.33.0"
 HELM_VERSION="3.17.3"
-AWS_CLI_VERSION="2.27.22"     # AWS CLI v2 (pinned)
+AWS_CLI_VERSION="2.34.12"     # AWS CLI v2 (pinned)
 OP_VERSION="2.30.3"
 JQ_VERSION="1.7.1"
 YQ_VERSION="4.45.1"
@@ -188,7 +189,7 @@ fi
 # ── AWS CLI v2 ─────────────────────────────────────────────────────
 if need_install aws "$AWS_CLI_VERSION"; then
     log "Installing AWS CLI v2..."
-    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-${OS}-x86_64.zip" \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-${OS}-x86_64-${AWS_CLI_VERSION}.zip" \
         -o "$TMPDIR/awscliv2.zip"
     (cd "$TMPDIR" && unzip -q awscliv2.zip)
     # Clean previous install to avoid --update ambiguity
@@ -198,6 +199,20 @@ if need_install aws "$AWS_CLI_VERSION"; then
     log "AWS CLI v2 ✓"
 else
     log "AWS CLI v2 already installed, skipping"
+fi
+
+# ── OpenAI Codex CLI ───────────────────────────────────────────────
+CODEX_VERSION="0.115.0"
+if need_install codex "$CODEX_VERSION"; then
+    log "Installing OpenAI Codex CLI $CODEX_VERSION..."
+    NPM_PREFIX="$TOOLS_DIR/npm-global"
+    mkdir -p "$NPM_PREFIX"
+    npm install -g "@openai/codex@$CODEX_VERSION" --prefix "$NPM_PREFIX" 2>&1 | tail -1
+    ln -sf "$NPM_PREFIX/bin/codex" "$INSTALL_DIR/codex"
+    mark_installed codex "$CODEX_VERSION"
+    log "Codex CLI $CODEX_VERSION ✓"
+else
+    log "Codex CLI $CODEX_VERSION already installed, skipping"
 fi
 
 # ── Summary ────────────────────────────────────────────────────────

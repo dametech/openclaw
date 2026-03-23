@@ -117,12 +117,13 @@ Pod Start
 | gh | 2.69.0 | ~50MB | GitHub CLI for PRs, issues |
 | kubectl | 1.33.0 | ~50MB | Kubernetes cluster management |
 | helm | 3.17.3 | ~50MB | Kubernetes package manager |
-| aws | 2.27.22 | ~200MB | AWS Lambda, IAM, etc. |
+| aws | 2.34.12 | ~200MB | AWS Lambda, IAM, etc. |
 | op | 2.30.3 | ~30MB | 1Password credential injection |
 | jq | 1.7.1 | ~2MB | JSON processing |
 | yq | 4.45.1 | ~10MB | YAML processing |
 | terraform | 1.11.3 | ~80MB | Infrastructure as Code |
 | kustomize | 5.6.0 | ~20MB | Kubernetes manifest customization |
+| codex | 0.115.0 | ~30MB | OpenAI Codex CLI for AI-assisted coding |
 
 **Total: ~1GB** on PVC (7.5GB free currently)
 
