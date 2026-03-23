@@ -57,9 +57,17 @@ Create a dedicated vault for agent secrets. Don't use Personal/Shared vaults (1P
 ```bash
 export KUBECONFIG=~/.kube/au01-0.yaml
 
+# Option A: from stdin (avoids token in shell history/ps output)
 kubectl create secret generic openclaw-1password \
   --namespace openclaw \
-  --from-literal=OP_SERVICE_ACCOUNT_TOKEN='ops_YOUR_TOKEN_HERE'
+  --from-file=OP_SERVICE_ACCOUNT_TOKEN=/dev/stdin <<< 'ops_YOUR_TOKEN_HERE'
+
+# Option B: from environment variable
+export OP_TOKEN='ops_YOUR_TOKEN_HERE'
+kubectl create secret generic openclaw-1password \
+  --namespace openclaw \
+  --from-literal=OP_SERVICE_ACCOUNT_TOKEN="$OP_TOKEN"
+unset OP_TOKEN
 ```
 
 ### Step 4: Add to Helm Values
