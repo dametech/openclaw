@@ -12,6 +12,8 @@ NAMESPACE="openclaw"
 RELEASE_NAME="openclaw"
 HELM_REPO="openclaw-community"
 HELM_REPO_URL="https://serhanekicii.github.io/openclaw-helm"
+SECRET_NAME="${RELEASE_NAME}-env-secret"
+VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
 
 # Colors for output
 RED='\033[0;31m'
@@ -51,6 +53,44 @@ check_prerequisites() {
     fi
 
     log_info "Prerequisites check passed."
+}
+
+check_cluster_disk_pressure() {
+    local disk_pressure_nodes
+
+    log_info "Checking cluster for disk pressure..."
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    disk_pressure_nodes=$(kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints --no-headers | grep 'node.kubernetes.io/disk-pressure' || true)
+
+    if [ -n "$disk_pressure_nodes" ]; then
+        log_error "Cluster has node(s) under disk pressure:"
+        echo "$disk_pressure_nodes"
+        log_error "Clear disk pressure before deploying a new OpenClaw instance."
+        exit 1
+    fi
+}
+
+# Prompt for API key
+get_release_name() {
+    local input_name
+
+    echo ""
+    echo -n "Enter instance name [openclaw]: "
+    read -r input_name
+
+    if [ -n "$input_name" ]; then
+        RELEASE_NAME="$input_name"
+    fi
+
+    if [ -z "$RELEASE_NAME" ]; then
+        log_error "Instance name cannot be empty."
+        exit 1
+    fi
+
+    SECRET_NAME="${RELEASE_NAME}-env-secret"
+    VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
 }
 
 # Prompt for API key
@@ -105,7 +145,7 @@ create_secret() {
 apiVersion: v1
 kind: Secret
 metadata:
-  name: openclaw-env-secret
+  name: $SECRET_NAME
   namespace: $NAMESPACE
 type: Opaque
 stringData:
@@ -117,7 +157,7 @@ EOF
 create_values() {
     log_info "Creating Helm values file..."
 
-    cat > /tmp/openclaw-values.yaml <<'EOF'
+    cat > "$VALUES_FILE" <<EOF
 app-template:
   controllers:
     main:
@@ -133,7 +173,7 @@ app-template:
           # Reference the secret containing the Anthropic API key
           envFrom:
             - secretRef:
-                name: openclaw-env-secret
+                name: $SECRET_NAME
 
   # Use the Talos hostpath storage class
   persistence:
@@ -146,6 +186,21 @@ app-template:
 EOF
 }
 
+show_deploy_diagnostics() {
+    local pod_name
+
+    log_warn "Helm deployment did not become ready. Gathering diagnostics..."
+
+    helm status "$RELEASE_NAME" -n "$NAMESPACE" || true
+    kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o wide || true
+    kubectl describe deployment "$RELEASE_NAME" -n "$NAMESPACE" || true
+
+    pod_name=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [ -n "$pod_name" ]; then
+        kubectl describe pod -n "$NAMESPACE" "$pod_name" || true
+    fi
+}
+
 # Deploy OpenClaw
 deploy_openclaw() {
     log_info "Deploying OpenClaw..."
@@ -154,17 +209,23 @@ deploy_openclaw() {
 
     if helm list -n "$NAMESPACE" | grep -q "$RELEASE_NAME"; then
         log_warn "OpenClaw is already installed. Upgrading..."
-        helm upgrade "$RELEASE_NAME" "$HELM_REPO/openclaw" \
+        if ! helm upgrade "$RELEASE_NAME" "$HELM_REPO/openclaw" \
             --namespace "$NAMESPACE" \
-            --values /tmp/openclaw-values.yaml \
+            --values "$VALUES_FILE" \
             --wait \
-            --timeout 10m
+            --timeout 10m; then
+            show_deploy_diagnostics
+            exit 1
+        fi
     else
-        helm install "$RELEASE_NAME" "$HELM_REPO/openclaw" \
+        if ! helm install "$RELEASE_NAME" "$HELM_REPO/openclaw" \
             --namespace "$NAMESPACE" \
-            --values /tmp/openclaw-values.yaml \
+            --values "$VALUES_FILE" \
             --wait \
-            --timeout 10m
+            --timeout 10m; then
+            show_deploy_diagnostics
+            exit 1
+        fi
     fi
 }
 
@@ -175,11 +236,11 @@ get_gateway_token() {
     export KUBECONFIG="$KUBECONFIG_PATH"
 
     # Wait for pod to be ready
-    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=openclaw -n "$NAMESPACE" --timeout=300s || true
+    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/instance=$RELEASE_NAME" -n "$NAMESPACE" --timeout=300s || true
 
     sleep 5
 
-    GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" deployment/openclaw -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | grep -o '"token": "[^"]*"' | cut -d'"' -f4)
+    GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | grep -o '"token": "[^"]*"' | cut -d'"' -f4)
 
     if [ -n "$GATEWAY_TOKEN" ]; then
         echo ""
@@ -200,14 +261,14 @@ show_access_info() {
     echo "To access OpenClaw:"
     echo "1. Start port forwarding:"
     echo "   export KUBECONFIG=$KUBECONFIG_PATH"
-    echo "   kubectl port-forward -n $NAMESPACE svc/openclaw 18789:18789"
+    echo "   kubectl port-forward -n $NAMESPACE svc/$RELEASE_NAME 18789:18789"
     echo ""
     echo "2. Open in browser: http://localhost:18789"
     echo "3. Authenticate with the gateway token shown above"
     echo ""
     echo "Useful commands:"
     echo "  kubectl get pods -n $NAMESPACE"
-    echo "  kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=openclaw -c main -f"
+    echo "  kubectl logs -n $NAMESPACE -l app.kubernetes.io/instance=$RELEASE_NAME -c main -f"
     echo ""
 }
 
@@ -216,6 +277,8 @@ main() {
     log_info "Starting OpenClaw deployment..."
 
     check_prerequisites
+    check_cluster_disk_pressure
+    get_release_name
     get_api_key
     setup_helm_repo
     create_namespace

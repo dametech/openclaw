@@ -12,6 +12,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+docs/superpowers/
 
 # Secrets
 *.key
