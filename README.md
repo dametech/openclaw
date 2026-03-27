@@ -17,7 +17,7 @@ Before deploying OpenClaw, ensure you have:
 1. **kubectl** - Kubernetes command-line tool
 2. **helm** - Kubernetes package manager (v4.0+)
 3. **Kubernetes cluster access** - The `~/.kube/au01-0.yaml` kubeconfig file
-4. **Anthropic API key** - Get one from [console.anthropic.com](https://console.anthropic.com)
+4. **AWS Bedrock credentials** - `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 
 ## Quick Start
 
@@ -29,10 +29,10 @@ Before deploying OpenClaw, ensure you have:
 
 This script will:
 - Check prerequisites
-- Prompt for your Anthropic API key (or use `$ANTHROPIC_API_KEY` env var)
+- Prompt for AWS Bedrock credentials (or use `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN`)
 - Set up the Helm repository
 - Create the `openclaw` namespace
-- Store your API key securely in a Kubernetes secret
+- Store your Bedrock credentials securely in a Kubernetes secret
 - Deploy OpenClaw using Helm
 - Display the gateway token for authentication
 
@@ -74,7 +74,7 @@ This script will prompt you to:
 ### Components Deployed
 
 - **Main Container**: OpenClaw gateway and agent runtime
-  - Uses Claude Opus 4.6 model
+  - Uses Claude Sonnet 4.6 on AWS Bedrock by default
   - Binds to the pod network (`lan`) so Kubernetes health probes can reach it
   - Port 18789 for web interface
 
@@ -94,7 +94,7 @@ This script will prompt you to:
 
 ### Security
 
-- **API Key**: Stored as Kubernetes secret (`openclaw-env-secret`)
+- **Bedrock Credentials**: Stored as Kubernetes secret (`openclaw-env-secret`)
 - **Control UI Origins**: Browser access is restricted to explicit allowed origins
 - **Recommended Access Path**: Use `kubectl port-forward` to `localhost:18789`
 - **Security Context**:
@@ -122,7 +122,7 @@ app-template:
             - "18789"
           envFrom:
             - secretRef:
-                name: openclaw-env-secret  # API key secret
+                name: openclaw-env-secret  # Bedrock credentials secret
 
   configMaps:
     config:
@@ -130,11 +130,115 @@ app-template:
         openclaw.json: |
           {
             "gateway": {
+              "mode": "local",
               "controlUi": {
                 "allowedOrigins": [
                   "http://127.0.0.1:18789",
                   "http://localhost:18789"
                 ]
+              }
+            },
+            "agents": {
+              "defaults": {
+                "workspace": "/home/node/.openclaw/workspace",
+                "model": {
+                  "primary": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
+                },
+                "models": {
+                  "amazon-bedrock/global.anthropic.claude-sonnet-4-6": {
+                    "params": {
+                      "cacheRetention": "ephemeral"
+                    }
+                  },
+                  "amazon-bedrock/global.anthropic.claude-opus-4-6-v1": {
+                    "params": {
+                      "cacheRetention": "ephemeral"
+                    }
+                  },
+                  "amazon-bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": {
+                    "params": {
+                      "cacheRetention": "none"
+                    }
+                  }
+                },
+                "userTimezone": "Australia/Brisbane",
+                "timeoutSeconds": 600,
+                "maxConcurrent": 1
+              },
+              "list": [
+                {
+                  "id": "main",
+                  "default": true,
+                  "identity": {
+                    "name": "OpenClaw",
+                    "emoji": "🦞"
+                  },
+                  "model": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
+                }
+              ]
+            },
+            "models": {
+              "providers": {
+                "amazon-bedrock": {
+                  "baseUrl": "https://bedrock-runtime.ap-southeast-2.amazonaws.com",
+                  "apiKey": "aws-sdk",
+                  "api": "bedrock-converse-stream",
+                  "models": [
+                    {
+                      "id": "global.anthropic.claude-sonnet-4-6",
+                      "name": "Claude Sonnet 4.6 (Bedrock)",
+                      "api": "bedrock-converse-stream",
+                      "reasoning": true,
+                      "input": ["text", "image"],
+                      "cost": {
+                        "input": 3,
+                        "output": 15,
+                        "cacheRead": 0.3,
+                        "cacheWrite": 3.75
+                      },
+                      "contextWindow": 200000,
+                      "maxTokens": 8000
+                    },
+                    {
+                      "id": "global.anthropic.claude-opus-4-6-v1",
+                      "name": "Claude Opus 4.6 (Bedrock)",
+                      "api": "bedrock-converse-stream",
+                      "reasoning": true,
+                      "input": ["text", "image"],
+                      "cost": {
+                        "input": 5,
+                        "output": 25,
+                        "cacheRead": 0.5,
+                        "cacheWrite": 6.25
+                      },
+                      "contextWindow": 200000,
+                      "maxTokens": 8000
+                    },
+                    {
+                      "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                      "name": "Claude Haiku 4.5 (Bedrock)",
+                      "api": "bedrock-converse-stream",
+                      "reasoning": false,
+                      "input": ["text", "image"],
+                      "cost": {
+                        "input": 1,
+                        "output": 5,
+                        "cacheRead": 0.1,
+                        "cacheWrite": 1.25
+                      },
+                      "contextWindow": 200000,
+                      "maxTokens": 4096
+                    }
+                  ]
+                }
+              },
+              "bedrockDiscovery": {
+                "enabled": false,
+                "region": "ap-southeast-2",
+                "providerFilter": ["anthropic", "amazon"],
+                "refreshInterval": 3600,
+                "defaultContextWindow": 32000,
+                "defaultMaxTokens": 4096
               }
             }
           }
@@ -153,8 +257,8 @@ app-template:
 OpenClaw's runtime configuration is stored at `/home/node/.openclaw/openclaw.json` in the pod:
 
 - **Gateway**: Token authentication, pod-network bind mode, explicit localhost Control UI origins
+- **Agents**: Single `main` agent uses Bedrock Sonnet by default and can switch to Opus or Haiku using the configured per-model entries and Bedrock provider metadata
 - **Browser**: Chromium CDP integration
-- **Agents**: Claude Opus 4.6 with cache retention
 - **Tools**: Full profile with web fetch enabled
 
 ## Manual Commands
@@ -262,8 +366,8 @@ OpenClaw is installed from the community Helm chart:
 - [Deployment Tutorials](https://lumadock.com/tutorials/openclaw-docker-kubernetes)
 
 ### API Provider
-- [Anthropic Console](https://console.anthropic.com) - Get API keys
-- [Claude API Docs](https://docs.anthropic.com)
+- [Amazon Bedrock](https://aws.amazon.com/bedrock/) - Host for Claude models
+- [AWS Bedrock Documentation](https://docs.aws.amazon.com/bedrock/)
 
 ## Environment Variables
 
@@ -271,7 +375,9 @@ The following environment variables can be used:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude models | Required |
+| `AWS_ACCESS_KEY_ID` | AWS access key for Bedrock | Required |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key for Bedrock | Required |
+| `AWS_SESSION_TOKEN` | Optional AWS session token | Optional |
 | `KUBECONFIG` | Path to kubeconfig file | `~/.kube/au01-0.yaml` |
 
 ## Advanced Usage

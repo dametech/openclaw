@@ -9,6 +9,7 @@ set -e
 # Configuration
 KUBECONFIG_PATH="${HOME}/.kube/au01-0.yaml"
 NAMESPACE="openclaw"
+RELEASE_NAME="openclaw"
 LOCAL_PORT="18789"
 
 # Colors for output
@@ -39,6 +40,18 @@ show_usage() {
     echo "  $0 -p 8080         # Forward to localhost:8080"
     echo "  $0 --port 9000     # Forward to localhost:9000"
     echo ""
+}
+
+get_release_name() {
+    local input_name
+
+    echo ""
+    echo -n "Enter instance name [openclaw]: "
+    read -r input_name
+
+    if [ -n "$input_name" ]; then
+        RELEASE_NAME="$input_name"
+    fi
 }
 
 # Parse command line arguments
@@ -73,19 +86,21 @@ if ! [[ "$LOCAL_PORT" =~ ^[0-9]+$ ]] || [ "$LOCAL_PORT" -lt 1 ] || [ "$LOCAL_POR
     exit 1
 fi
 
+get_release_name
+
 # Export kubeconfig
 export KUBECONFIG="$KUBECONFIG_PATH"
 
 # Check if pod is running
 log_info "Checking OpenClaw pod status..."
-if ! kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=openclaw | grep -q "Running"; then
+if ! kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" | grep -q "Running"; then
     log_warn "OpenClaw pod is not running. Deploy it first with ./openclaw-deploy.sh"
     exit 1
 fi
 
 # Get gateway token
 log_info "Retrieving gateway token..."
-GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" deployment/openclaw -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | grep -o '"token": "[^"]*"' | cut -d'"' -f4)
+GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | grep -o '"token": "[^"]*"' | cut -d'"' -f4)
 
 echo ""
 echo "============================================"
@@ -101,4 +116,4 @@ echo "Press Ctrl+C to stop port forwarding"
 echo ""
 
 # Start port forwarding
-kubectl port-forward -n "$NAMESPACE" svc/openclaw "$LOCAL_PORT:18789"
+kubectl port-forward -n "$NAMESPACE" "svc/$RELEASE_NAME" "$LOCAL_PORT:18789"

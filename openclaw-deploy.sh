@@ -93,21 +93,35 @@ get_release_name() {
     VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
 }
 
-# Prompt for API key
-get_api_key() {
-    if [ -n "$ANTHROPIC_API_KEY" ]; then
-        log_info "Using ANTHROPIC_API_KEY from environment"
-        API_KEY="$ANTHROPIC_API_KEY"
+# Prompt for AWS Bedrock credentials
+get_bedrock_credentials() {
+    if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+        log_info "Using AWS_ACCESS_KEY_ID from environment"
     else
         echo ""
-        echo -n "Enter your Anthropic API key (sk-ant-...): "
-        read -r API_KEY
-
-        if [[ ! $API_KEY =~ ^sk-ant- ]]; then
-            log_error "Invalid API key format. Should start with 'sk-ant-'"
-            exit 1
-        fi
+        echo -n "Enter your AWS Access Key ID: "
+        read -r AWS_ACCESS_KEY_ID
     fi
+
+    if [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        log_info "Using AWS_SECRET_ACCESS_KEY from environment"
+    else
+        echo -n "Enter your AWS Secret Access Key: "
+        read -r AWS_SECRET_ACCESS_KEY
+    fi
+
+    AWS_SESSION_TOKEN="${AWS_SESSION_TOKEN:-}"
+
+    if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+        log_error "AWS_ACCESS_KEY_ID is required"
+        exit 1
+    fi
+
+    if [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+        log_error "AWS_SECRET_ACCESS_KEY is required"
+        exit 1
+    fi
+
 }
 
 # Setup Helm repository
@@ -135,11 +149,18 @@ create_namespace() {
     kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 }
 
-# Create API key secret
+# Create AWS Bedrock credentials secret
 create_secret() {
-    log_info "Creating API key secret..."
+    log_info "Creating AWS Bedrock credentials secret..."
 
     export KUBECONFIG="$KUBECONFIG_PATH"
+
+    kubectl delete secret "$SECRET_NAME" -n "$NAMESPACE" --ignore-not-found
+
+    local aws_session_token_line=""
+    if [ -n "$AWS_SESSION_TOKEN" ]; then
+        aws_session_token_line="  AWS_SESSION_TOKEN: \"$AWS_SESSION_TOKEN\""
+    fi
 
     cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -149,7 +170,10 @@ metadata:
   namespace: $NAMESPACE
 type: Opaque
 stringData:
-  ANTHROPIC_API_KEY: "$API_KEY"
+  AWS_ACCESS_KEY_ID: "$AWS_ACCESS_KEY_ID"
+  AWS_SECRET_ACCESS_KEY: "$AWS_SECRET_ACCESS_KEY"
+  AWS_REGION: "ap-southeast-2"
+$aws_session_token_line
 EOF
 }
 
@@ -170,7 +194,7 @@ app-template:
             - lan
             - --port
             - "18789"
-          # Reference the secret containing the Anthropic API key
+          # Reference the secret containing the Bedrock credentials
           envFrom:
             - secretRef:
                 name: $SECRET_NAME
@@ -187,6 +211,109 @@ app-template:
                   "http://127.0.0.1:18789",
                   "http://localhost:18789"
                 ]
+              }
+            },
+            "agents": {
+              "defaults": {
+                "workspace": "/home/node/.openclaw/workspace",
+                "model": {
+                  "primary": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
+                },
+                "models": {
+                  "amazon-bedrock/global.anthropic.claude-sonnet-4-6": {
+                    "params": {
+                      "cacheRetention": "ephemeral"
+                    }
+                  },
+                  "amazon-bedrock/global.anthropic.claude-opus-4-6-v1": {
+                    "params": {
+                      "cacheRetention": "ephemeral"
+                    }
+                  },
+                  "amazon-bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": {
+                    "params": {
+                      "cacheRetention": "none"
+                    }
+                  }
+                },
+                "userTimezone": "Australia/Brisbane",
+                "timeoutSeconds": 600,
+                "maxConcurrent": 1
+              },
+              "list": [
+                {
+                  "id": "main",
+                  "default": true,
+                  "identity": {
+                    "name": "OpenClaw",
+                    "emoji": "🦞"
+                  },
+                  "model": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
+                }
+              ]
+            },
+            "models": {
+              "providers": {
+                "amazon-bedrock": {
+                  "baseUrl": "https://bedrock-runtime.ap-southeast-2.amazonaws.com",
+                  "apiKey": "aws-sdk",
+                  "api": "bedrock-converse-stream",
+                  "models": [
+                    {
+                      "id": "global.anthropic.claude-sonnet-4-6",
+                      "name": "Claude Sonnet 4.6 (Bedrock)",
+                      "api": "bedrock-converse-stream",
+                      "reasoning": true,
+                      "input": ["text", "image"],
+                      "cost": {
+                        "input": 3,
+                        "output": 15,
+                        "cacheRead": 0.3,
+                        "cacheWrite": 3.75
+                      },
+                      "contextWindow": 200000,
+                      "maxTokens": 8000
+                    },
+                    {
+                      "id": "global.anthropic.claude-opus-4-6-v1",
+                      "name": "Claude Opus 4.6 (Bedrock)",
+                      "api": "bedrock-converse-stream",
+                      "reasoning": true,
+                      "input": ["text", "image"],
+                      "cost": {
+                        "input": 5,
+                        "output": 25,
+                        "cacheRead": 0.5,
+                        "cacheWrite": 6.25
+                      },
+                      "contextWindow": 200000,
+                      "maxTokens": 8000
+                    },
+                    {
+                      "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+                      "name": "Claude Haiku 4.5 (Bedrock)",
+                      "api": "bedrock-converse-stream",
+                      "reasoning": false,
+                      "input": ["text", "image"],
+                      "cost": {
+                        "input": 1,
+                        "output": 5,
+                        "cacheRead": 0.1,
+                        "cacheWrite": 1.25
+                      },
+                      "contextWindow": 200000,
+                      "maxTokens": 4096
+                    }
+                  ]
+                }
+              },
+              "bedrockDiscovery": {
+                "enabled": false,
+                "region": "ap-southeast-2",
+                "providerFilter": ["anthropic", "amazon"],
+                "refreshInterval": 3600,
+                "defaultContextWindow": 32000,
+                "defaultMaxTokens": 4096
               }
             }
           }
@@ -295,7 +422,7 @@ main() {
     check_prerequisites
     check_cluster_disk_pressure
     get_release_name
-    get_api_key
+    get_bedrock_credentials
     setup_helm_repo
     create_namespace
     create_secret
