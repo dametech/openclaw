@@ -75,7 +75,7 @@ This script will prompt you to:
 
 - **Main Container**: OpenClaw gateway and agent runtime
   - Uses Claude Opus 4.6 model
-  - Binds to loopback interface (127.0.0.1) for security
+  - Binds to the pod network (`lan`) so Kubernetes health probes can reach it
   - Port 18789 for web interface
 
 - **Chromium Sidecar**: Headless browser for automation
@@ -95,7 +95,8 @@ This script will prompt you to:
 ### Security
 
 - **API Key**: Stored as Kubernetes secret (`openclaw-env-secret`)
-- **Loopback Binding**: Service only accessible via port-forward
+- **Control UI Origins**: Browser access is restricted to explicit allowed origins
+- **Recommended Access Path**: Use `kubectl port-forward` to `localhost:18789`
 - **Security Context**:
   - Read-only root filesystem
   - Non-root user (UID 1000)
@@ -116,12 +117,27 @@ app-template:
           args:
             - gateway
             - --bind
-            - loopback  # Secure local binding
+            - lan  # Required so Kubernetes probes can reach the gateway
             - --port
             - "18789"
           envFrom:
             - secretRef:
                 name: openclaw-env-secret  # API key secret
+
+  configMaps:
+    config:
+      data:
+        openclaw.json: |
+          {
+            "gateway": {
+              "controlUi": {
+                "allowedOrigins": [
+                  "http://127.0.0.1:18789",
+                  "http://localhost:18789"
+                ]
+              }
+            }
+          }
 
   persistence:
     data:
@@ -136,7 +152,7 @@ app-template:
 
 OpenClaw's runtime configuration is stored at `/home/node/.openclaw/openclaw.json` in the pod:
 
-- **Gateway**: Token authentication, loopback mode
+- **Gateway**: Token authentication, pod-network bind mode, explicit localhost Control UI origins
 - **Browser**: Chromium CDP integration
 - **Agents**: Claude Opus 4.6 with cache retention
 - **Tools**: Full profile with web fetch enabled

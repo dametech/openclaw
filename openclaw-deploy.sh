@@ -163,17 +163,33 @@ app-template:
     main:
       containers:
         main:
-          # Use loopback binding for security (access via port-forward)
+          # Bind to the pod network so Kubernetes probes can reach the gateway
           args:
             - gateway
             - --bind
-            - loopback
+            - lan
             - --port
             - "18789"
           # Reference the secret containing the Anthropic API key
           envFrom:
             - secretRef:
                 name: $SECRET_NAME
+
+  configMaps:
+    config:
+      data:
+        openclaw.json: |
+          {
+            "gateway": {
+              "mode": "local",
+              "controlUi": {
+                "allowedOrigins": [
+                  "http://127.0.0.1:18789",
+                  "http://localhost:18789"
+                ]
+              }
+            }
+          }
 
   # Use the Talos hostpath storage class
   persistence:
