@@ -29,10 +29,28 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Prompt for release name
+get_release_name() {
+    local input_name
+
+    echo ""
+    echo -n "Enter instance name [openclaw]: "
+    read -r input_name
+
+    if [ -n "$input_name" ]; then
+        RELEASE_NAME="$input_name"
+    fi
+
+    if [ -z "$RELEASE_NAME" ]; then
+        log_error "Instance name cannot be empty."
+        exit 1
+    fi
+}
+
 # Confirm deletion
 confirm_deletion() {
     echo ""
-    log_warn "This will delete the OpenClaw deployment and all associated resources."
+    log_warn "This will delete the OpenClaw deployment '$RELEASE_NAME' and associated resources."
     echo -n "Are you sure you want to continue? (yes/no): "
     read -r response
 
@@ -68,9 +86,17 @@ delete_pvc() {
     read -r response
 
     if [ "$response" = "yes" ]; then
-        log_info "Deleting PersistentVolumeClaim..."
+        log_info "Deleting PersistentVolumeClaim(s) for release '$RELEASE_NAME'..."
         export KUBECONFIG="$KUBECONFIG_PATH"
-        kubectl delete pvc -n "$NAMESPACE" --all
+        local pvc_names
+        pvc_names=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
+
+        if [ -z "$pvc_names" ]; then
+            log_warn "No PVCs found for release '$RELEASE_NAME'."
+            return
+        fi
+
+        kubectl delete -n "$NAMESPACE" $pvc_names
     else
         log_info "PVC preserved. Data will be retained for next deployment."
     fi
@@ -95,13 +121,14 @@ delete_namespace() {
 stop_port_forward() {
     log_info "Stopping any running port-forward processes..."
 
-    pkill -f "kubectl port-forward.*openclaw" || true
+    pkill -f "kubectl port-forward.*$RELEASE_NAME" || true
 }
 
 # Main execution
 main() {
     log_info "Starting OpenClaw cleanup..."
 
+    get_release_name
     confirm_deletion
     check_deployment
     stop_port_forward

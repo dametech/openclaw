@@ -124,6 +124,34 @@ get_bedrock_credentials() {
 
 }
 
+# Prompt for Microsoft Graph app identifiers
+get_msgraph_config() {
+    if [ -n "${MSGRAPH_TENANT_ID:-}" ]; then
+        log_info "Using MSGRAPH_TENANT_ID from environment"
+    else
+        echo ""
+        echo -n "Enter your Microsoft Graph Tenant ID: "
+        read -r MSGRAPH_TENANT_ID
+    fi
+
+    if [ -n "${MSGRAPH_CLIENT_ID:-}" ]; then
+        log_info "Using MSGRAPH_CLIENT_ID from environment"
+    else
+        echo -n "Enter your Microsoft Graph Client ID: "
+        read -r MSGRAPH_CLIENT_ID
+    fi
+
+    if [ -z "${MSGRAPH_TENANT_ID:-}" ]; then
+        log_error "MSGRAPH_TENANT_ID is required"
+        exit 1
+    fi
+
+    if [ -z "${MSGRAPH_CLIENT_ID:-}" ]; then
+        log_error "MSGRAPH_CLIENT_ID is required"
+        exit 1
+    fi
+}
+
 # Setup Helm repository
 setup_helm_repo() {
     log_info "Setting up Helm repository..."
@@ -187,17 +215,24 @@ app-template:
     main:
       containers:
         main:
+          command:
+            - /bin/sh
+            - -c
+            - /bin/sh /scripts/start-openclaw.sh
           # Bind to the pod network so Kubernetes probes can reach the gateway
-          args:
-            - gateway
-            - --bind
-            - lan
-            - --port
-            - "18789"
           # Reference the secret containing the Bedrock credentials
+          env:
+            NODE_OPTIONS: "--max-old-space-size=2048"
           envFrom:
             - secretRef:
                 name: $SECRET_NAME
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 4000m
+              memory: 4Gi
 
   configMaps:
     config:
@@ -315,8 +350,78 @@ app-template:
                 "defaultContextWindow": 32000,
                 "defaultMaxTokens": 4096
               }
+            },
+            "plugins": {
+              "load": {
+                "paths": [
+                  "/home/node/.openclaw/plugins/ms-graph-query"
+                ]
+              },
+              "entries": {
+                "ms-graph-query": {
+                  "enabled": true,
+                  "config": {
+                    "tenantId": "${MSGRAPH_TENANT_ID:-}",
+                    "clientId": "${MSGRAPH_CLIENT_ID:-}",
+                    "delegatedScope": "offline_access openid profile User.Read Mail.ReadWrite Mail.Send Calendars.ReadWrite Files.ReadWrite Sites.ReadWrite.All",
+                    "graphBaseUrl": "https://graph.microsoft.com",
+                    "tokenStorePath": "~/.openclaw/ms-graph-query-tokens.json",
+                    "allowedPathPrefixes": [
+                      "/v1.0/sites",
+                      "/v1.0/drives",
+                      "/v1.0/me",
+                      "/v1.0/users",
+                      "/v1.0/search/query"
+                    ],
+                    "allowedUserEmails": [],
+                    "largeFileThreshold": 4194304
+                  }
+                }
+              }
             }
           }
+    ms-graph-plugin:
+      data:
+        openclaw.plugin.json: |
+$(sed 's/^/          /' plugins/ms-graph-query/openclaw.plugin.json)
+        index.js: |
+$(sed 's/^/          /' plugins/ms-graph-query/index.js)
+    startup-script:
+      data:
+        start-openclaw.sh: |
+          #!/bin/sh
+          set -eu
+
+          BOOTSTRAP_FILE="/home/node/.openclaw/workspace/BOOTSTRAP.md"
+          BOOTSTRAP_MARKER="## Microsoft Graph Login"
+
+          mkdir -p /home/node/.openclaw/workspace
+          mkdir -p /home/node/.openclaw/plugins/ms-graph-query
+          cp /plugin-source-ms-graph/openclaw.plugin.json /home/node/.openclaw/plugins/ms-graph-query/openclaw.plugin.json
+          cp /plugin-source-ms-graph/index.js /home/node/.openclaw/plugins/ms-graph-query/index.js
+          if [ ! -f "\$BOOTSTRAP_FILE" ]; then
+            touch "\$BOOTSTRAP_FILE"
+          fi
+
+          if ! grep -qF "\$BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
+            cat >> "\$BOOTSTRAP_FILE" <<'BOOTSTRAP_EOF'
+
+          ## Microsoft Graph Login
+
+          This pod includes the \`ms_graph_query\` plugin for Microsoft Graph access.
+
+          Before using Microsoft Graph features, complete delegated device login:
+
+          1. Run \`ms_graph_query\` with \`action="login_start"\`.
+          2. Open the returned verification URL and enter the provided user code.
+          3. Run \`ms_graph_query\` with \`action="login_poll"\` until authentication succeeds.
+          4. Optionally run \`ms_graph_query\` with \`action="login_status"\` to confirm the token is stored.
+
+          After login succeeds, the plugin can be used for Outlook, OneDrive, and SharePoint operations permitted by the configured Graph scopes.
+          BOOTSTRAP_EOF
+          fi
+
+          exec openclaw gateway --bind lan --port 18789
 
   # Use the Talos hostpath storage class
   persistence:
@@ -326,6 +431,20 @@ app-template:
       accessMode: ReadWriteOnce
       size: 5Gi
       storageClass: talos-hostpath
+    ms-graph-plugin:
+      enabled: true
+      type: configMap
+      name: '{{ .Release.Name }}-ms-graph-plugin'
+      globalMounts:
+        - path: /plugin-source-ms-graph
+          readOnly: true
+    startup-script:
+      enabled: true
+      type: configMap
+      name: '{{ .Release.Name }}-startup-script'
+      globalMounts:
+        - path: /scripts
+          readOnly: true
 EOF
 }
 
@@ -423,6 +542,7 @@ main() {
     check_cluster_disk_pressure
     get_release_name
     get_bedrock_credentials
+    get_msgraph_config
     setup_helm_repo
     create_namespace
     create_secret

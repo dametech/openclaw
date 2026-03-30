@@ -1,0 +1,40 @@
+{
+  "id": "ms-graph-query",
+  "name": "Microsoft Graph Query",
+  "description": "Query Microsoft Graph for SharePoint/Outlook data.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tenantId": { "type": "string", "minLength": 1 },
+      "clientId": { "type": "string", "minLength": 1 },
+      "delegatedScope": {
+        "type": "string",
+        "default": "offline_access openid profile User.Read Mail.Read Calendars.Read Files.Read Sites.Read.All"
+      },
+      "graphBaseUrl": { "type": "string", "default": "https://graph.microsoft.com" },
+      "tokenStorePath": { "type": "string", "default": "~/.openclaw/ms-graph-query-tokens.json" },
+      "allowedPathPrefixes": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": [
+          "/v1.0/sites",
+          "/v1.0/drives",
+          "/v1.0/me",
+          "/v1.0/users",
+          "/v1.0/search/query"
+        ]
+      },
+      "allowedUserEmails": {
+        "type": "array",
+        "items": { "type": "string" },
+        "default": []
+      },
+      "largeFileThreshold": {
+        "type": "number",
+        "default": 4194304,
+        "description": "File size threshold in bytes for using resumable upload sessions"
+      }
+    }
+  }
+}
