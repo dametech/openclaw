@@ -152,6 +152,27 @@ get_msgraph_config() {
     fi
 }
 
+# Prompt for Jira base URL
+get_jira_config() {
+    local default_jira_url="https://dame-technologies.atlassian.net/"
+
+    if [ -n "${JIRA_BASE_URL:-}" ]; then
+        log_info "Using JIRA_BASE_URL from environment"
+    else
+        echo ""
+        echo -n "Enter Jira base URL [$default_jira_url]: "
+        read -r JIRA_BASE_URL
+    fi
+
+    JIRA_BASE_URL="${JIRA_BASE_URL:-$default_jira_url}"
+    JIRA_BASE_URL="${JIRA_BASE_URL%/}"
+
+    if [ -z "${JIRA_BASE_URL:-}" ]; then
+        log_error "JIRA_BASE_URL cannot be empty"
+        exit 1
+    fi
+}
+
 # Setup Helm repository
 setup_helm_repo() {
     log_info "Setting up Helm repository..."
@@ -354,7 +375,8 @@ app-template:
             "plugins": {
               "load": {
                 "paths": [
-                  "/home/node/.openclaw/plugins/ms-graph-query"
+                  "/home/node/.openclaw/plugins/ms-graph-query",
+                  "/home/node/.openclaw/plugins/jira-query"
                 ]
               },
               "entries": {
@@ -376,6 +398,13 @@ app-template:
                     "allowedUserEmails": [],
                     "largeFileThreshold": 4194304
                   }
+                },
+                "jira-query": {
+                  "enabled": true,
+                  "config": {
+                    "baseUrl": "${JIRA_BASE_URL:-}",
+                    "defaultProjectKeys": []
+                  }
                 }
               }
             }
@@ -386,6 +415,12 @@ app-template:
 $(sed 's/^/          /' plugins/ms-graph-query/openclaw.plugin.json)
         index.js: |
 $(sed 's/^/          /' plugins/ms-graph-query/index.js)
+    jira-plugin:
+      data:
+        openclaw.plugin.json: |
+$(sed 's/^/          /' plugins/jira-query/openclaw.plugin.json)
+        index.js: |
+$(sed 's/^/          /' plugins/jira-query/index.js)
     startup-script:
       data:
         start-openclaw.sh: |
@@ -393,17 +428,21 @@ $(sed 's/^/          /' plugins/ms-graph-query/index.js)
           set -eu
 
           BOOTSTRAP_FILE="/home/node/.openclaw/workspace/BOOTSTRAP.md"
-          BOOTSTRAP_MARKER="## Microsoft Graph Login"
+          MS_GRAPH_BOOTSTRAP_MARKER="## Microsoft Graph Login"
+          JIRA_BOOTSTRAP_MARKER="## Jira Login"
 
           mkdir -p /home/node/.openclaw/workspace
           mkdir -p /home/node/.openclaw/plugins/ms-graph-query
+          mkdir -p /home/node/.openclaw/plugins/jira-query
           cp /plugin-source-ms-graph/openclaw.plugin.json /home/node/.openclaw/plugins/ms-graph-query/openclaw.plugin.json
           cp /plugin-source-ms-graph/index.js /home/node/.openclaw/plugins/ms-graph-query/index.js
+          cp /plugin-source-jira/openclaw.plugin.json /home/node/.openclaw/plugins/jira-query/openclaw.plugin.json
+          cp /plugin-source-jira/index.js /home/node/.openclaw/plugins/jira-query/index.js
           if [ ! -f "\$BOOTSTRAP_FILE" ]; then
             touch "\$BOOTSTRAP_FILE"
           fi
 
-          if ! grep -qF "\$BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
+          if ! grep -qF "\$MS_GRAPH_BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
             cat >> "\$BOOTSTRAP_FILE" <<'BOOTSTRAP_EOF'
 
           ## Microsoft Graph Login
@@ -418,6 +457,24 @@ $(sed 's/^/          /' plugins/ms-graph-query/index.js)
           4. Optionally run \`ms_graph_query\` with \`action="login_status"\` to confirm the token is stored.
 
           After login succeeds, the plugin can be used for Outlook, OneDrive, and SharePoint operations permitted by the configured Graph scopes.
+          BOOTSTRAP_EOF
+          fi
+
+          if ! grep -qF "\$JIRA_BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
+            cat >> "\$BOOTSTRAP_FILE" <<'BOOTSTRAP_EOF'
+
+          ## Jira Login
+
+          This pod includes the \`jira_query\` plugin for Jira access.
+
+          Before using Jira features, get a Jira API token and configure credentials once for this pod:
+
+          1. Create an Atlassian API token for your Jira account.
+          2. Run \`jira_query\` with \`action="login_setup"\`.
+          3. Provide \`email\` and \`apiToken\`. The default Jira URL for this pod is \`${JIRA_BASE_URL:-}\`.
+          4. Optionally include \`defaultProjectKeys\` to scope default ticket lookups.
+
+          After setup succeeds, the plugin can query Jira and perform Jira write actions for the configured account.
           BOOTSTRAP_EOF
           fi
 
@@ -437,6 +494,13 @@ $(sed 's/^/          /' plugins/ms-graph-query/index.js)
       name: '{{ .Release.Name }}-ms-graph-plugin'
       globalMounts:
         - path: /plugin-source-ms-graph
+          readOnly: true
+    jira-plugin:
+      enabled: true
+      type: configMap
+      name: '{{ .Release.Name }}-jira-plugin'
+      globalMounts:
+        - path: /plugin-source-jira
           readOnly: true
     startup-script:
       enabled: true
@@ -543,6 +607,7 @@ main() {
     get_release_name
     get_bedrock_credentials
     get_msgraph_config
+    get_jira_config
     setup_helm_repo
     create_namespace
     create_secret

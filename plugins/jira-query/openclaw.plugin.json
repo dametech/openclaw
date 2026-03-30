@@ -1,0 +1,15 @@
+{
+  "id": "jira-query",
+  "name": "Jira Query",
+  "description": "Read and write Jira issues via Atlassian REST API for a single-user pod.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "baseUrl": { "type": "string", "minLength": 1, "default": "https://dame-technologies.atlassian.net" },
+      "email": { "type": "string", "minLength": 1 },
+      "apiToken": { "type": "string", "minLength": 1 },
+      "defaultProjectKeys": { "type": "array", "items": { "type": "string" }, "default": [] }
+    }
+  }
+}
