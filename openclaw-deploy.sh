@@ -14,6 +14,7 @@ HELM_REPO="openclaw-community"
 HELM_REPO_URL="https://serhanekicii.github.io/openclaw-helm"
 SECRET_NAME="${RELEASE_NAME}-env-secret"
 VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
+OLLAMA_EMBEDDINGS_MODEL="${OLLAMA_EMBEDDINGS_MODEL:-nomic-embed-text}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -230,7 +231,22 @@ EOF
 create_values() {
     log_info "Creating Helm values file..."
 
+    local memory_search_block
+    memory_search_block=$(cat <<EOF
+,
+                "memorySearch": {
+                  "provider": "ollama",
+                  "model": "${OLLAMA_EMBEDDINGS_MODEL}",
+                  "remote": {
+                    "baseUrl": "http://ollama-embeddings.openclaw.svc.cluster.local:11434"
+                  }
+                }
+EOF
+)
+
     cat > "$VALUES_FILE" <<EOF
+fullnameOverride: $RELEASE_NAME
+
 app-template:
   controllers:
     main:
@@ -267,6 +283,13 @@ app-template:
                   "http://127.0.0.1:18789",
                   "http://localhost:18789"
                 ]
+              },
+              "http": {
+                "endpoints": {
+                  "responses": {
+                    "enabled": true
+                  }
+                }
               }
             },
             "agents": {
@@ -294,7 +317,7 @@ app-template:
                 },
                 "userTimezone": "Australia/Brisbane",
                 "timeoutSeconds": 600,
-                "maxConcurrent": 1
+                "maxConcurrent": 1${memory_search_block}
               },
               "list": [
                 {
@@ -376,7 +399,8 @@ app-template:
               "load": {
                 "paths": [
                   "/home/node/.openclaw/plugins/ms-graph-query",
-                  "/home/node/.openclaw/plugins/jira-query"
+                  "/home/node/.openclaw/plugins/jira-query",
+                  "/home/node/.openclaw/plugins/pod-delegate"
                 ]
               },
               "entries": {
@@ -385,15 +409,13 @@ app-template:
                   "config": {
                     "tenantId": "${MSGRAPH_TENANT_ID:-}",
                     "clientId": "${MSGRAPH_CLIENT_ID:-}",
-                    "delegatedScope": "offline_access openid profile User.Read Mail.ReadWrite Mail.Send Calendars.ReadWrite Files.ReadWrite Sites.ReadWrite.All",
+                    "delegatedScope": "offline_access openid profile User.Read Calendars.ReadWrite Mail.ReadWrite Files.ReadWrite Sites.Read.All",
                     "graphBaseUrl": "https://graph.microsoft.com",
                     "tokenStorePath": "~/.openclaw/ms-graph-query-tokens.json",
                     "allowedPathPrefixes": [
                       "/v1.0/sites",
                       "/v1.0/drives",
-                      "/v1.0/me",
-                      "/v1.0/users",
-                      "/v1.0/search/query"
+                      "/v1.0/me"
                     ],
                     "allowedUserEmails": [],
                     "largeFileThreshold": 4194304
@@ -404,6 +426,14 @@ app-template:
                   "config": {
                     "baseUrl": "${JIRA_BASE_URL:-}",
                     "defaultProjectKeys": []
+                  }
+                },
+                "pod-delegate": {
+                  "enabled": true,
+                  "config": {
+                    "jobStorePath": "~/.openclaw/pod-delegate-jobs.json",
+                    "defaultPollIntervalSeconds": 5,
+                    "targets": ${POD_DELEGATE_TARGETS_JSON:-{}}
                   }
                 }
               }
@@ -421,6 +451,12 @@ $(sed 's/^/          /' plugins/ms-graph-query/index.js)
 $(sed 's/^/          /' plugins/jira-query/openclaw.plugin.json)
         index.js: |
 $(sed 's/^/          /' plugins/jira-query/index.js)
+    pod-delegate-plugin:
+      data:
+        openclaw.plugin.json: |
+$(sed 's/^/          /' plugins/pod-delegate/openclaw.plugin.json)
+        index.js: |
+$(sed 's/^/          /' plugins/pod-delegate/index.js)
     startup-script:
       data:
         start-openclaw.sh: |
@@ -430,14 +466,18 @@ $(sed 's/^/          /' plugins/jira-query/index.js)
           BOOTSTRAP_FILE="/home/node/.openclaw/workspace/BOOTSTRAP.md"
           MS_GRAPH_BOOTSTRAP_MARKER="## Microsoft Graph Login"
           JIRA_BOOTSTRAP_MARKER="## Jira Login"
+          POD_DELEGATE_BOOTSTRAP_MARKER="## Inter-Pod Delegation"
 
           mkdir -p /home/node/.openclaw/workspace
           mkdir -p /home/node/.openclaw/plugins/ms-graph-query
           mkdir -p /home/node/.openclaw/plugins/jira-query
+          mkdir -p /home/node/.openclaw/plugins/pod-delegate
           cp /plugin-source-ms-graph/openclaw.plugin.json /home/node/.openclaw/plugins/ms-graph-query/openclaw.plugin.json
           cp /plugin-source-ms-graph/index.js /home/node/.openclaw/plugins/ms-graph-query/index.js
           cp /plugin-source-jira/openclaw.plugin.json /home/node/.openclaw/plugins/jira-query/openclaw.plugin.json
           cp /plugin-source-jira/index.js /home/node/.openclaw/plugins/jira-query/index.js
+          cp /plugin-source-pod-delegate/openclaw.plugin.json /home/node/.openclaw/plugins/pod-delegate/openclaw.plugin.json
+          cp /plugin-source-pod-delegate/index.js /home/node/.openclaw/plugins/pod-delegate/index.js
           if [ ! -f "\$BOOTSTRAP_FILE" ]; then
             touch "\$BOOTSTRAP_FILE"
           fi
@@ -478,6 +518,26 @@ $(sed 's/^/          /' plugins/jira-query/index.js)
           BOOTSTRAP_EOF
           fi
 
+          if ! grep -qF "\$POD_DELEGATE_BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
+            cat >> "\$BOOTSTRAP_FILE" <<'BOOTSTRAP_EOF'
+
+          ## Inter-Pod Delegation
+
+          This pod includes the \`pod_delegate\` plugin for asynchronous delegation to other configured OpenClaw pods.
+          This pod may start with no configured delegate targets.
+
+          It delegates through the documented remote gateway OpenResponses API at \`POST /v1/responses\`.
+          Configured target gateways must expose this endpoint and enable \`gateway.http.endpoints.responses.enabled\`.
+          To configure delegation after deployment, the operator only needs the delegate pod/service name and delegate pod gateway token.
+          The plugin derives the in-cluster service URL from the target name.
+
+          1. Run \`pod_delegate\` with \`action="delegate_targets"\` to see available targets.
+          2. Run \`pod_delegate\` with \`action="delegate_start"\` to submit work and get a \`jobId\`.
+          3. Run \`pod_delegate\` with \`action="delegate_status"\` to check the local async job state.
+          4. Run \`pod_delegate\` with \`action="delegate_result"\` to fetch the final reply when complete.
+          BOOTSTRAP_EOF
+          fi
+
           exec openclaw gateway --bind lan --port 18789
 
   # Use the Talos hostpath storage class
@@ -501,6 +561,13 @@ $(sed 's/^/          /' plugins/jira-query/index.js)
       name: '{{ .Release.Name }}-jira-plugin'
       globalMounts:
         - path: /plugin-source-jira
+          readOnly: true
+    pod-delegate-plugin:
+      enabled: true
+      type: configMap
+      name: '{{ .Release.Name }}-pod-delegate-plugin'
+      globalMounts:
+        - path: /plugin-source-pod-delegate
           readOnly: true
     startup-script:
       enabled: true

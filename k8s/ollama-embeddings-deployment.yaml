@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-embeddings
+  namespace: ${NAMESPACE}
+  labels:
+    app.kubernetes.io/name: ollama-embeddings
+    app.kubernetes.io/instance: ollama-embeddings
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ollama-embeddings
+      app.kubernetes.io/instance: ollama-embeddings
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ollama-embeddings
+        app.kubernetes.io/instance: ollama-embeddings
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+              ollama serve &
+              server_pid=$!
+              trap 'kill $server_pid' EXIT
+              until ollama list >/dev/null 2>&1; do
+                sleep 2
+              done
+              ollama pull ${OLLAMA_EMBEDDINGS_MODEL}
+              wait $server_pid
+          ports:
+            - containerPort: 11434
+              name: http
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 4Gi

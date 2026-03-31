@@ -89,7 +89,7 @@ const plugin = {
       clientId: { type: "string", minLength: 1 },
       delegatedScope: {
         type: "string",
-        default: "offline_access openid profile User.Read Mail.Read Calendars.Read Files.Read Sites.Read.All",
+        default: "offline_access openid profile User.Read Calendars.ReadWrite Mail.ReadWrite Files.ReadWrite Sites.Read.All",
       },
       graphBaseUrl: { type: "string", default: "https://graph.microsoft.com" },
       tokenStorePath: { type: "string", default: "~/.openclaw/ms-graph-query-tokens.json" },
@@ -100,8 +100,6 @@ const plugin = {
           "/v1.0/sites",
           "/v1.0/drives",
           "/v1.0/me",
-          "/v1.0/users",
-          "/v1.0/search/query",
         ],
       },
       allowedUserEmails: {
@@ -177,7 +175,7 @@ const plugin = {
           const clientId = String(entry.clientId || msteams.appId || "").trim();
           const delegatedScope = String(
             entry.delegatedScope ||
-              "offline_access openid profile User.Read Mail.Read Calendars.Read Files.Read Sites.Read.All",
+              "offline_access openid profile User.Read Calendars.ReadWrite Mail.ReadWrite Files.ReadWrite Sites.Read.All",
           ).trim();
           const graphBaseUrl = String(entry.graphBaseUrl || "https://graph.microsoft.com").replace(/\/$/, "");
           const tokenStorePath = expandHome(String(entry.tokenStorePath || "~/.openclaw/ms-graph-query-tokens.json"));
@@ -185,7 +183,7 @@ const plugin = {
 
           const allowedPathPrefixes = Array.isArray(entry.allowedPathPrefixes)
             ? entry.allowedPathPrefixes.map((x) => String(x))
-            : ["/v1.0/sites", "/v1.0/drives", "/v1.0/me", "/v1.0/users", "/v1.0/search/query"];
+            : ["/v1.0/sites", "/v1.0/drives", "/v1.0/me"];
           const allowedUserEmails = (Array.isArray(entry.allowedUserEmails) ? entry.allowedUserEmails : [])
             .map((x) => String(x || "").trim().toLowerCase())
             .filter(Boolean);

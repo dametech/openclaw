@@ -36,7 +36,37 @@ This script will:
 - Deploy OpenClaw using Helm
 - Display the gateway token for authentication
 
-### 2. Access OpenClaw
+### 2. Deploy Optional Ollama Embeddings Service
+
+If you want OpenClaw pods to use a shared in-cluster Ollama service for semantic memory embeddings, deploy it separately:
+
+```bash
+set -a
+. ./deploy.env
+set +a
+./deploy-ollama-embeddings.sh
+```
+
+Relevant `deploy.env` settings:
+
+```bash
+OLLAMA_EMBEDDINGS_MODEL=nomic-embed-text
+```
+
+This creates:
+- a dedicated Ollama deployment in the `openclaw` namespace
+- a `ClusterIP` service reachable at `http://ollama-embeddings.openclaw.svc.cluster.local:11434`
+- a `NetworkPolicy` allowing ingress only from OpenClaw pods
+
+OpenClaw pods now assume that shared service exists and use it for semantic memory embeddings by default. The only Ollama-related setting you normally need in `deploy.env` is:
+
+```bash
+OLLAMA_EMBEDDINGS_MODEL=nomic-embed-text
+```
+
+Then run `./openclaw-deploy.sh` for each OpenClaw instance. The service name is fixed as `ollama-embeddings`, so there is no separate prompt or env var for it.
+
+### 3. Access OpenClaw
 
 Start port forwarding to access the web interface:
 
@@ -56,7 +86,7 @@ Then open your browser to the URL displayed by the script (e.g., **http://localh
 
 Authenticate using the gateway token displayed by the script.
 
-### 3. Clean Up
+### 4. Clean Up
 
 To remove OpenClaw from your cluster:
 
@@ -85,6 +115,11 @@ This script will prompt you to:
 - **Init Containers**:
   - `init-config`: Merges Helm configuration with runtime config
   - `init-skills`: Installs ClawHub skills (weather, gog)
+
+- **Optional Ollama Embeddings Deployment**: Separate in-cluster embeddings service
+  - Deployed with `./deploy-ollama-embeddings.sh`
+  - Exposes Ollama only on internal service port `11434`
+  - Intended only for semantic memory embeddings, not chat/completions
 
 ### Storage
 
@@ -258,8 +293,42 @@ OpenClaw's runtime configuration is stored at `/home/node/.openclaw/openclaw.jso
 
 - **Gateway**: Token authentication, pod-network bind mode, explicit localhost Control UI origins
 - **Agents**: Single `main` agent uses Bedrock Sonnet by default and can switch to Opus or Haiku using the configured per-model entries and Bedrock provider metadata
+- **Memory Search**: `agents.defaults.memorySearch` is configured by default with `provider: "ollama"` and `remote.baseUrl` set to the shared in-cluster Ollama service
 - **Browser**: Chromium CDP integration
 - **Tools**: Full profile with web fetch enabled
+
+### Ollama Embeddings Service
+
+The Ollama deployment is managed separately from OpenClaw so multiple OpenClaw pods can share one embeddings service.
+
+Deploy it with:
+
+```bash
+set -a
+. ./deploy.env
+set +a
+./deploy-ollama-embeddings.sh
+```
+
+Verify it with:
+
+```bash
+export KUBECONFIG=~/.kube/au01-0.yaml
+kubectl get deploy,svc,networkpolicy -n openclaw | grep ollama
+kubectl logs -n openclaw deployment/ollama-embeddings
+```
+
+OpenClaw pods are configured to use the shared Ollama service for semantic memory by default. The only Ollama-specific setting you normally need is:
+
+```bash
+OLLAMA_EMBEDDINGS_MODEL=nomic-embed-text
+```
+
+Then deploy or redeploy that OpenClaw instance with `./openclaw-deploy.sh`. The resulting `openclaw.json` points semantic memory embeddings at:
+
+```text
+http://ollama-embeddings.openclaw.svc.cluster.local:11434
+```
 
 ## Manual Commands
 
@@ -338,6 +407,22 @@ kubectl exec -n openclaw deployment/openclaw -c main -- \
 kubectl get all -n openclaw
 ```
 
+### Ollama Embeddings Not Reachable
+
+Check that the Ollama deployment and service exist:
+
+```bash
+kubectl get deploy,svc,networkpolicy -n openclaw | grep ollama
+kubectl logs -n openclaw deployment/ollama-embeddings
+```
+
+Then confirm the OpenClaw pod is configured to use it:
+
+```bash
+kubectl exec -n openclaw deployment/openclaw -c main -- \
+  cat /home/node/.openclaw/openclaw.json | grep -n 'memorySearch\|ollama'
+```
+
 ## Helm Repository
 
 OpenClaw is installed from the community Helm chart:
@@ -378,6 +463,7 @@ The following environment variables can be used:
 | `AWS_ACCESS_KEY_ID` | AWS access key for Bedrock | Required |
 | `AWS_SECRET_ACCESS_KEY` | AWS secret key for Bedrock | Required |
 | `AWS_SESSION_TOKEN` | Optional AWS session token | Optional |
+| `OLLAMA_EMBEDDINGS_MODEL` | Ollama embedding model pulled by the Ollama pod and referenced by OpenClaw | `nomic-embed-text` |
 | `KUBECONFIG` | Path to kubeconfig file | `~/.kube/au01-0.yaml` |
 
 ## Advanced Usage

@@ -1,0 +1,32 @@
+{
+  "id": "pod-delegate",
+  "name": "Pod Delegate",
+  "description": "Delegate work asynchronously to configured OpenClaw pods in the same cluster.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "jobStorePath": {
+        "type": "string",
+        "default": "~/.openclaw/pod-delegate-jobs.json"
+      },
+      "defaultPollIntervalSeconds": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 5
+      },
+      "targets": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "token": { "type": "string", "minLength": 1 }
+          },
+          "required": ["token"]
+        },
+        "default": {}
+      }
+    }
+  }
+}

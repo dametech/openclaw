@@ -10,7 +10,7 @@
       "clientId": { "type": "string", "minLength": 1 },
       "delegatedScope": {
         "type": "string",
-        "default": "offline_access openid profile User.Read Mail.Read Calendars.Read Files.Read Sites.Read.All"
+        "default": "offline_access openid profile User.Read Calendars.ReadWrite Mail.ReadWrite Files.ReadWrite Sites.Read.All"
       },
       "graphBaseUrl": { "type": "string", "default": "https://graph.microsoft.com" },
       "tokenStorePath": { "type": "string", "default": "~/.openclaw/ms-graph-query-tokens.json" },
@@ -20,9 +20,7 @@
         "default": [
           "/v1.0/sites",
           "/v1.0/drives",
-          "/v1.0/me",
-          "/v1.0/users",
-          "/v1.0/search/query"
+          "/v1.0/me"
         ]
       },
       "allowedUserEmails": {
