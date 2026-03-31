@@ -96,8 +96,8 @@ To remove OpenClaw from your cluster:
 
 This script will prompt you to:
 - Confirm deletion
-- Optionally delete the PersistentVolumeClaim (data)
-- Optionally delete the namespace
+- Delete the release PersistentVolumeClaim (data)
+- Preserve the `openclaw` namespace
 
 ## Deployment Architecture
 

@@ -79,42 +79,19 @@ delete_release() {
     helm uninstall "$RELEASE_NAME" -n "$NAMESPACE"
 }
 
-# Delete PVC (optional)
+# Delete PVCs for the release
 delete_pvc() {
-    echo ""
-    echo -n "Delete PersistentVolumeClaim (this will delete all data)? (yes/no): "
-    read -r response
+    log_info "Deleting PersistentVolumeClaim(s) for release '$RELEASE_NAME'..."
+    export KUBECONFIG="$KUBECONFIG_PATH"
+    local pvc_names
+    pvc_names=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
 
-    if [ "$response" = "yes" ]; then
-        log_info "Deleting PersistentVolumeClaim(s) for release '$RELEASE_NAME'..."
-        export KUBECONFIG="$KUBECONFIG_PATH"
-        local pvc_names
-        pvc_names=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
-
-        if [ -z "$pvc_names" ]; then
-            log_warn "No PVCs found for release '$RELEASE_NAME'."
-            return
-        fi
-
-        kubectl delete -n "$NAMESPACE" $pvc_names
-    else
-        log_info "PVC preserved. Data will be retained for next deployment."
+    if [ -z "$pvc_names" ]; then
+        log_warn "No PVCs found for release '$RELEASE_NAME'."
+        return
     fi
-}
 
-# Delete namespace (optional)
-delete_namespace() {
-    echo ""
-    echo -n "Delete namespace '$NAMESPACE' (removes all resources including secrets)? (yes/no): "
-    read -r response
-
-    if [ "$response" = "yes" ]; then
-        log_info "Deleting namespace '$NAMESPACE'..."
-        export KUBECONFIG="$KUBECONFIG_PATH"
-        kubectl delete namespace "$NAMESPACE"
-    else
-        log_info "Namespace preserved."
-    fi
+    kubectl delete -n "$NAMESPACE" $pvc_names
 }
 
 # Stop port-forward processes
@@ -134,7 +111,6 @@ main() {
     stop_port_forward
     delete_release
     delete_pvc
-    delete_namespace
 
     echo ""
     log_info "Cleanup complete! 🦞"

@@ -181,6 +181,7 @@ globalThis.fetch = async (url, options) => {
   assert.equal(options.method, "POST");
   assert.equal(options.headers.authorization, "Bearer secret-token");
   assert.equal(options.headers["content-type"], "application/json");
+  assert.equal(options.headers["x-openclaw-scopes"], "operator.write");
 
   const body = JSON.parse(options.body);
   assert.equal(body.model, "openclaw");

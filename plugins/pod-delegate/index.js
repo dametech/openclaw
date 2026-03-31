@@ -266,6 +266,7 @@ async function callResponsesApi(target, request) {
       authorization: `Bearer ${target.token}`,
       "content-type": "application/json",
       "x-openclaw-agent-id": target.agent,
+      "x-openclaw-scopes": "operator.write",
     },
     body: JSON.stringify(request),
   });

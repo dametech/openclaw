@@ -255,7 +255,7 @@ app-template:
           command:
             - /bin/sh
             - -c
-            - /bin/sh /scripts/start-openclaw.sh
+            - /bin/sh /startup-scripts/start-openclaw.sh
           # Bind to the pod network so Kubernetes probes can reach the gateway
           # Reference the secret containing the Bedrock credentials
           env:
@@ -574,7 +574,7 @@ $(sed 's/^/          /' plugins/pod-delegate/index.js)
       type: configMap
       name: '{{ .Release.Name }}-startup-script'
       globalMounts:
-        - path: /scripts
+        - path: /startup-scripts
           readOnly: true
 EOF
 }
