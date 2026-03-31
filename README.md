@@ -363,6 +363,20 @@ kubectl exec -n openclaw deployment/openclaw -c main -- cat /home/node/.openclaw
 kubectl rollout restart deployment/openclaw -n openclaw
 ```
 
+### Sync Shared Plugins And Skills
+
+To push the repo's current `plugins/` and `skills/` folders into every running OpenClaw deployment, then restart each deployment:
+
+```bash
+./sync-openclaw-shared-config.sh
+```
+
+This script:
+- detects all deployments labeled as OpenClaw in the `openclaw` namespace
+- copies `plugins/` and `skills/` into `~/.openclaw/` in the running pod
+- restarts each deployment
+- waits for rollout completion and prints status
+
 ### Manual Port Forwarding
 
 If you need more control over port forwarding:

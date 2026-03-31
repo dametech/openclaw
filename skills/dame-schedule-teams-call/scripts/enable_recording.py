@@ -1,4 +1,5 @@
-#!/usr/bin/env python3"""
+#!/usr/bin/env python3
+"""
 enable_recording.py - Find a Teams online meeting by joinWebUrl and enable auto-recording.
 
 Usage:
@@ -9,7 +10,6 @@ The access token is read from the ACCESS_TOKEN environment variable (not a CLI a
 """
 import sys
 import os
-import json
 import requests
 
 def main():

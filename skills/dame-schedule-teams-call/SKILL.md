@@ -7,6 +7,48 @@ description: Schedule a Microsoft Teams meeting using the DAME Scrummaster accou
 
 Schedule Teams meetings via the Scrummaster account with auto-recording and transcription on.
 
+This skill is split by pod role:
+- On non-Scrummaster pods: delegate the full scheduling request to the Scrummaster pod `oc-sm`
+- On the Scrummaster pod `oc-sm`: perform the scheduling flow locally
+
+## Pod Routing
+
+Before doing any Microsoft Graph or calendar work, determine whether you are already on the Scrummaster pod.
+
+Use a quick shell check such as:
+
+```bash
+hostname
+```
+
+Rules:
+- If the current pod is `oc-sm` (or its hostname/deployment clearly belongs to the `oc-sm` release), continue with the local scheduling workflow below
+- If the current pod is not `oc-sm`, do not schedule locally. Delegate the request to target `oc-sm` with the `pod_delegate` plugin and wait for the result
+
+### Delegation From Non-Scrummaster Pods
+
+Use `pod_delegate`:
+- `action="delegate_start"`
+- `target="oc-sm"`
+- `message` should clearly state that `oc-sm` must execute the `dame-schedule-teams-call` skill and include all collected meeting details
+
+The delegated payload must include:
+- title
+- attendees
+- date and time
+- timezone
+- duration
+- requester name
+- requester email
+- optional description or agenda
+
+After starting the job:
+1. Check with `delegate_status`
+2. Fetch the final reply with `delegate_result`
+3. Return the Scrummaster pod's final scheduling result to the user
+
+If delegation to `oc-sm` is unavailable or fails, say so explicitly instead of attempting to schedule from the wrong pod
+
 ## Required Info
 
 Collect before proceeding (ask if not provided):
@@ -19,25 +61,47 @@ Collect before proceeding (ask if not provided):
 
 ## Workflow
 
-Always use `authMode: "delegated"`, `loginKey: "srumm4st3r"` for every API call.
+Only the `oc-sm` pod should execute the workflow below.
+
+Use the `ms_graph_query` plugin with:
+- `action="query"` for Graph API calls
+- delegated device-code login for authentication
+
+There is no `loginKey` parameter anymore.
+
+Before scheduling, confirm authentication:
+1. Run `ms_graph_query` with `action="login_status"`
+2. If not authenticated, run `action="login_start"`
+3. Complete the device-code login
+4. Run `action="login_poll"` until authentication succeeds
+
+The plugin stores a single delegated token in `~/.openclaw/ms-graph-query-tokens.json`.
 
 ### Step 1: Resolve attendee emails
 
-If given names instead of emails, look up via MS Graph:
+If given names instead of emails, resolve them through a `/v1.0/me...` path that the current plugin allowlist supports.
+
+Preferred lookup:
 ```
-GET /v1.0/users?$filter=displayName eq '{name}'&$select=displayName,mail,userPrincipalName
+GET /v1.0/me/people?$search="{name}"
 ```
-Or search:
-```
-GET /v1.0/users?$search="displayName:{name}"&$select=displayName,mail,userPrincipalName
-```
-(Add header: `ConsistencyLevel: eventual` for search queries)
+
+Use `ms_graph_query` with:
+- `action="query"`
+- `method="GET"`
+- `path="/v1.0/me/people?$search={name}"`
+
+Then extract the best available email from returned fields such as `scoredEmailAddresses`.
+
+If the lookup does not return a clear email address, ask the requester to provide the attendee email directly. Do not rely on the old `/v1.0/users` lookup.
 
 ### Step 2: Create the calendar event
 
-```
-POST /v1.0/me/events
-```
+Use `ms_graph_query` with:
+- `action="query"`
+- `method="POST"`
+- `path="/v1.0/me/events"`
+- `body=<event payload>`
 
 Body:
 ```json
@@ -67,19 +131,23 @@ From the response, capture `onlineMeeting.joinUrl`.
 Use the bundled script to avoid meeting ID encoding issues (copy-pasting the ID manually causes subtle encoding errors):
 
 ```bash
+ACCESS_TOKEN="$(python3 - <<'PY'
 import json
-token = json.load(open('/home/ssm-user/.openclaw/ms-graph-query-tokens.json'))['delegated']['srumm4st3r']['access_token']
-ACCESS_TOKEN="$token" python3 <skill_dir>/scripts/enable_recording.py "<joinUrl from Step 2>"
+import os
+store = json.load(open(os.path.expanduser("~/.openclaw/ms-graph-query-tokens.json")))
+print(store["delegated"]["access_token"])
+PY
+)" python3 <skill_dir>/scripts/enable_recording.py "<joinUrl from Step 2>"
 ```
 
-The token is passed via environment variable (not as a CLI arg) to avoid exposure in process listings and shell history.
+The token is passed via environment variable, not as a CLI argument.
 
 The script will print `✅ Auto-recording enabled successfully` on success. If it fails, do not proceed — recording will not work.
 
 Alternatively, if doing it manually via ms_graph_query:
-1. `GET /v1.0/me/onlineMeetings?$filter=joinWebUrl eq '<joinUrl>'` — do NOT add `$select`
+1. Run `ms_graph_query` with `action="query"`, `method="GET"`, `path="/v1.0/me/onlineMeetings?$filter=joinWebUrl eq '<joinUrl>'"` — do not add `$select`
 2. Take the `id` from `value[0].id` **exactly as returned** (do not re-encode or modify it)
-3. `PATCH /v1.0/me/onlineMeetings/<id>` with `{"recordAutomatically": true}`
+3. Run `ms_graph_query` with `action="query"`, `method="PATCH"`, `path="/v1.0/me/onlineMeetings/<id>"`, `body={"recordAutomatically": true}`
 
 ### Step 4: Confirm to the user
 
@@ -95,6 +163,7 @@ Reply with:
 - **All meetings use `scrumm4st3r@dame.energy`** as organiser — never the requester's account
 - **The requester is always added as a `required` attendee** — even if they don't list themselves
 - The invite body attribution format is: *"This call was scheduled by Scrummaster on behalf of **[Name]**."*
+- The current `ms_graph_query` plugin uses one delegated token store and does not support `loginKey`
 - **Do NOT pass `onlineMeetingUrl` in the events body** — it is ignored by the API and a new meeting is always created
 - For recurring meetings, use the `recurrence` field in the events API
 - If attendee lookup fails, ask the requester to provide the email directly
