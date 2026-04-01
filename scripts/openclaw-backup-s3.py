@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-One-off OpenClaw PVC config backup to S3.
+OpenClaw PVC config backup to S3.
 Pure stdlib — no boto3 required.
 
 Usage:
@@ -18,10 +18,10 @@ to s3://<bucket>/openclaw-backups/au01-0/<timestamp>.tar.gz
 import datetime
 import hashlib
 import hmac
-import io
 import os
 import sys
 import tarfile
+import tempfile
 import urllib.request
 import urllib.error
 
@@ -29,15 +29,16 @@ import urllib.error
 OPENCLAW_DIR = os.path.expanduser("~/.openclaw")
 BACKUP_PREFIX = "openclaw-backups/au01-0"
 
-# Directories/files to EXCLUDE (reproducible or large)
+# Top-level directories to EXCLUDE (reproducible or large)
 EXCLUDE_DIRS = {
     "bin", "tools", "go", ".tool-versions",
     "node_modules", ".cache", "chromium",
     "sessions",       # session data can be large, not config
 }
 
+# Individual filenames to EXCLUDE
 EXCLUDE_FILES = {
-    ".git-credentials",  # we'll handle this separately with a note
+    ".git-credentials",
 }
 
 # ── AWS SigV4 Signing ─────────────────────────────────────────────
@@ -57,7 +58,7 @@ def s3_put(bucket, key, data, region, access_key, secret_key):
     host = f"{bucket}.s3.{region}.amazonaws.com"
     endpoint = f"https://{host}/{key}"
 
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     amz_date = now.strftime("%Y%m%dT%H%M%SZ")
     date_stamp = now.strftime("%Y%m%d")
 
@@ -114,32 +115,51 @@ def s3_put(bucket, key, data, region, access_key, secret_key):
 
 
 def create_backup_archive(source_dir):
-    """Create a tar.gz in memory of config files, excluding large/reproducible dirs."""
-    buf = io.BytesIO()
+    """Create a tar.gz on disk, excluding large/reproducible dirs.
+
+    Uses a temp file instead of in-memory buffer to avoid OOM under
+    constrained K8s memory limits.
+    """
+    tmp = tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False)
 
     def exclude_filter(tarinfo):
-        # Get the top-level directory name relative to source
-        rel = os.path.relpath(tarinfo.name, source_dir)
-        parts = rel.split(os.sep)
+        # Archive paths are like "openclaw/foo/bar" — split and take
+        # components after the top-level archive name.
+        parts = tarinfo.name.split(os.sep)
+        if len(parts) <= 1:
+            return tarinfo
+
+        rel_parts = parts[1:]  # relative to the archive root
 
         # Skip excluded top-level directories
-        if parts[0] in EXCLUDE_DIRS:
+        if rel_parts[0] in EXCLUDE_DIRS:
+            return None
+
+        # Skip excluded individual files
+        if tarinfo.isreg() and rel_parts[-1] in EXCLUDE_FILES:
             return None
 
         # Skip .git directories inside workspaces (can be large)
-        if ".git" in parts and parts.index(".git") > 0:
-            # Allow top-level .git but skip nested ones in workspace clones
-            parent = parts[parts.index(".git") - 1]
-            if parent.startswith("workspace-"):
+        if ".git" in rel_parts:
+            idx = rel_parts.index(".git")
+            if idx > 0 and rel_parts[idx - 1].startswith("workspace-"):
                 return None
 
         return tarinfo
 
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        tar.add(source_dir, arcname="openclaw", filter=exclude_filter)
+    try:
+        with tarfile.open(fileobj=tmp, mode="w:gz") as tar:
+            tar.add(source_dir, arcname="openclaw", filter=exclude_filter)
+        tmp.close()
 
-    buf.seek(0)
-    return buf.read()
+        with open(tmp.name, "rb") as f:
+            data = f.read()
+        return data
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
 
 def main():
@@ -175,7 +195,7 @@ def main():
     print(f"Archive size: {size_mb:.1f} MB")
 
     # Upload
-    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H%M%SZ")
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
     s3_key = f"{BACKUP_PREFIX}/{timestamp}.tar.gz"
     print(f"Uploading to s3://{bucket}/{s3_key}...")
 
