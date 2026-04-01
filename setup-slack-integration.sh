@@ -9,6 +9,8 @@ set -e
 # Configuration
 KUBECONFIG_PATH="${HOME}/.kube/au01-0.yaml"
 NAMESPACE="openclaw"
+RELEASE_NAME="openclaw"
+SLACK_SECRET_NAME="${RELEASE_NAME}-slack-tokens"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors for output
@@ -42,6 +44,25 @@ show_banner() {
     echo "║   Automated Configuration & Deployment       ║"
     echo "╚═══════════════════════════════════════════════╝"
     echo ""
+}
+
+get_release_name() {
+    local input_name
+
+    echo ""
+    echo -n "Enter instance name [openclaw]: "
+    read -r input_name
+
+    if [ -n "$input_name" ]; then
+        RELEASE_NAME="$input_name"
+    fi
+
+    if [ -z "$RELEASE_NAME" ]; then
+        log_error "Instance name cannot be empty."
+        exit 1
+    fi
+
+    SLACK_SECRET_NAME="${RELEASE_NAME}-slack-tokens"
 }
 
 # Check prerequisites
@@ -531,7 +552,7 @@ create_k8s_secret() {
 apiVersion: v1
 kind: Secret
 metadata:
-  name: openclaw-slack-tokens
+  name: ${RELEASE_NAME}-slack-tokens
   namespace: $NAMESPACE
   annotations:
     operator.1password.io/item-path: "$APP_TOKEN_REF"
@@ -549,7 +570,7 @@ EOF
 apiVersion: v1
 kind: Secret
 metadata:
-  name: openclaw-slack-tokens
+  name: ${RELEASE_NAME}-slack-tokens
   namespace: $NAMESPACE
 type: Opaque
 stringData:
@@ -559,7 +580,7 @@ EOF
 
     fi
 
-    log_info "✓ Secret created: openclaw-slack-tokens"
+    log_info "✓ Secret created: $SLACK_SECRET_NAME"
 }
 
 # Generate openclaw.json configuration
@@ -608,7 +629,7 @@ app-template:
             - secretRef:
                 name: openclaw-env-secret
             - secretRef:
-                name: openclaw-slack-tokens
+                name: ${RELEASE_NAME}-slack-tokens
 
   configMaps:
     config:
@@ -643,7 +664,7 @@ EOF
 
     log_info "Deploying updated configuration to Kubernetes..."
 
-    helm upgrade openclaw openclaw-community/openclaw \
+    helm upgrade "$RELEASE_NAME" openclaw-community/openclaw \
         --namespace "$NAMESPACE" \
         --values /tmp/openclaw-values.yaml \
         --wait \
@@ -661,7 +682,7 @@ wait_for_pod() {
     log_info "Waiting for OpenClaw pod to be ready..."
 
     kubectl wait --for=condition=ready pod \
-        -l app.kubernetes.io/name=openclaw \
+        -l "app.kubernetes.io/instance=$RELEASE_NAME" \
         -n "$NAMESPACE" \
         --timeout=300s
 
@@ -682,7 +703,7 @@ test_slack_integration() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Recent logs:"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name=openclaw -c main --tail=30 \
+    kubectl logs -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -c main --tail=30 \
         | grep -i "slack\|socket\|channel" || log_warn "No Slack-related log entries found yet"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
@@ -707,10 +728,10 @@ ${BLUE}📱 Test the Bot:${NC}
 
 ${BLUE}🔐 Approve Pairing (if needed):${NC}
 
-   kubectl exec -n openclaw deployment/openclaw -c main -- \\
+   kubectl exec -n openclaw deployment/$RELEASE_NAME -c main -- \\
      node dist/index.js pairing list
 
-   kubectl exec -n openclaw deployment/openclaw -c main -- \\
+   kubectl exec -n openclaw deployment/$RELEASE_NAME -c main -- \\
      node dist/index.js pairing approve slack <code>
 
 ${BLUE}💬 Invite to Channels:${NC}
@@ -723,11 +744,11 @@ ${BLUE}💬 Invite to Channels:${NC}
 
 ${BLUE}📊 View Logs:${NC}
 
-   kubectl logs -n openclaw -l app.kubernetes.io/name=openclaw -c main -f
+   kubectl logs -n openclaw -l app.kubernetes.io/instance=$RELEASE_NAME -c main -f
 
 ${BLUE}📄 Configuration Files:${NC}
 
-   • Kubernetes Secret: ${CYAN}openclaw-slack-tokens${NC}
+   • Kubernetes Secret: ${CYAN}$SLACK_SECRET_NAME${NC}
    • Helm Values: ${CYAN}/tmp/openclaw-values.yaml${NC}
    • Config Snippet: ${CYAN}/tmp/openclaw-slack-config.json${NC}
    • OAuth Scopes: ${CYAN}/tmp/slack-bot-scopes.txt${NC}
@@ -740,7 +761,7 @@ EOF
     if [ "$USE_1PASSWORD" = true ]; then
         echo "   • 1Password: ${CYAN}$VAULT_NAME/OpenClaw Slack Tokens${NC}"
     fi
-    echo "   • Kubernetes: ${CYAN}$NAMESPACE/openclaw-slack-tokens${NC}"
+    echo "   • Kubernetes: ${CYAN}$NAMESPACE/$SLACK_SECRET_NAME${NC}"
 
     cat <<EOF
 
@@ -757,6 +778,7 @@ EOF
 main() {
     show_banner
     check_prerequisites
+    get_release_name
     choose_setup_method
 
     if [ "$SETUP_METHOD" = "manifest" ]; then

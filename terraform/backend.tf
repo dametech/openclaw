@@ -1,10 +1,10 @@
 terraform {
   backend "s3" {
-    bucket         = "dame-terraform-state"
+    bucket         = "dame-tfstate-apse2"
     key            = "openclaw/teams-alb/terraform.tfstate"
     region         = "ap-southeast-2"
     encrypt        = true
-    dynamodb_table = "dame-terraform-locks"
+    dynamodb_table = "dame-tf-locks"
   }
 
   required_version = ">= 1.0"
@@ -14,16 +14,11 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
-    }
   }
 }
 
 provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
+  region = var.aws_region
 
   default_tags {
     tags = {
@@ -33,8 +28,4 @@ provider "aws" {
       Component   = "Teams-Integration"
     }
   }
-}
-
-provider "kubernetes" {
-  config_path = var.kubeconfig_path
 }

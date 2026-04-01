@@ -221,6 +221,35 @@ zip -r openclaw-teams-app.zip manifest.json color.png outline.png
 
 ## Phase 3: OpenClaw Configuration
 
+### Post-Deploy Enablement Script
+
+If the shared wildcard ALB edge is already configured and your Azure Bot already exists, you can enable Teams on an existing OpenClaw release with:
+
+```bash
+./setup-msteams-integration.sh
+```
+
+This script assumes:
+
+- the shared ALB already exists
+- the wildcard certificate for `*.openclaw.dametech.net` is already attached
+- wildcard DNS already points at the shared ALB
+- you already have the Teams `appId`, `appPassword`, and `tenantId`
+
+The script derives the public Teams endpoint from the release name:
+
+```text
+https://<release>.openclaw.dametech.net/api/messages
+```
+
+It then:
+
+- creates a Teams credentials secret for that release
+- creates a release-specific NodePort service for the Teams webhook
+- patches `openclaw.json` to enable `channels.msteams`
+- installs the `@openclaw/msteams` plugin in the running release
+- creates a host-based ALB rule routing the derived hostname to that release
+
 ### Install Teams Plugin
 
 Since January 2026, Teams is a separate plugin:

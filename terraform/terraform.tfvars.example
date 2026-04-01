@@ -1,47 +1,14 @@
-# OpenClaw Teams Integration Configuration
-# Copy this file to terraform.tfvars and fill in your actual values
+# Shared OpenClaw wildcard edge configuration
+# Copy this file to terraform.tfvars and fill in your actual values.
 
 aws_region  = "ap-southeast-2"
 aws_profile = "personal"
 environment = "prod"
 
-# VPC Configuration (DAME-VPC)
-vpc_id = "vpc-XXXXXXXXX"  # Replace with your DAME-VPC ID
+# Existing shared ALB
+existing_alb_name = "openclaw-alb"
+existing_https_listener_port = 443
 
-# Public subnets for ALB (need at least 2 in different AZs)
-public_subnet_ids = [
-  "subnet-XXXXXXXXX",  # AZ 1
-  "subnet-XXXXXXXXX",  # AZ 2
-]
-
-# Domain Configuration
-# ACM certificate will be automatically requested and validated
-domain_name        = "openclaw.au01-0.dametech.net"
-route53_zone_name  = "dametech.net"
-
-# Kubernetes Worker Node IPs (from au01-0 cluster)
-# Get with: kubectl get nodes -o wide --kubeconfig ~/.kube/au01-0.yaml
-k8s_worker_nodes = [
-  "10.42.32.16",  # talos-cluster-one-worker-w01
-  "10.42.32.17",  # talos-cluster-one-worker-w02
-  "10.42.32.19",  # talos-cluster-one-worker-w04
-]
-
-# Kubernetes NodePort for Teams webhook
-k8s_nodeport = 30978
-
-# Health check configuration
-health_check_path = "/"
-health_check_port = 18789
-
-# Teams webhook path
-teams_webhook_path = "/api/messages"
-
-# ALB settings
-enable_deletion_protection = false  # Set to true for production
-
-# Optional: Route53 DNS
-# Uncomment and configure if you want a custom domain
-# domain_name            = "openclaw.yourdomain.com"
-# create_route53_record  = true
-# route53_zone_id        = "Z0123456789ABC"
+# Route53 / ACM wildcard certificate
+route53_zone_name = "dametech.net"
+wildcard_domain_name = "*.openclaw.dametech.net"
