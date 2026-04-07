@@ -75,7 +75,7 @@ kubectl run restore-${AGENT} \
         \"name\": \"restore\",
         \"image\": \"amazon/aws-cli:latest\",
         \"command\": [\"/bin/sh\", \"-c\"],
-        \"args\": [\"aws s3 cp s3://dame-openclaw-backup/${BACKUP_KEY} /tmp/backup.tar.gz --region ap-southeast-2 && cd /data && tar -xzf /tmp/backup.tar.gz --strip-components=3 && echo DONE\"],
+        \"args\": [\"aws s3 cp s3://dame-openclaw-backup/${BACKUP_KEY} /tmp/backup.tar.gz --region ap-southeast-2 && cd /data && tar -xzf /tmp/backup.tar.gz --strip-components=1 && echo DONE\"],
         \"env\": [
           {\"name\": \"AWS_ACCESS_KEY_ID\", \"valueFrom\": {\"secretKeyRef\": {\"name\": \"openclaw-backup-aws\", \"key\": \"AWS_ACCESS_KEY_ID\"}}},
           {\"name\": \"AWS_SECRET_ACCESS_KEY\", \"valueFrom\": {\"secretKeyRef\": {\"name\": \"openclaw-backup-aws\", \"key\": \"AWS_SECRET_ACCESS_KEY\"}}}
@@ -86,7 +86,7 @@ kubectl run restore-${AGENT} \
   }" -n openclaw
 ```
 
-> **Note:** The tar archive is rooted at `home/node/.openclaw/` (3 components). Adjust `--strip-components` if the path differs — verify with `tar -tzf backup.tar.gz | head`.
+> **Note:** The tar archive is rooted at `openclaw/` (1 component). Use `--strip-components=1` to extract contents into `/data`. Verify with `tar -tzf backup.tar.gz | head` before extracting.
 
 ---
 
@@ -127,7 +127,7 @@ kubectl exec -n openclaw deployment/openclaw -- \
 
 # Extract specific files (e.g. workspace)
 kubectl exec -n openclaw deployment/openclaw -- \
-  tar -xzf /tmp/backup.tar.gz -C / --strip-components=2 home/node/.openclaw/workspace-openclaw
+  tar -xzf /tmp/backup.tar.gz -C /home/node/.openclaw --strip-components=1 openclaw/workspace-openclaw
 ```
 
 ---
@@ -161,7 +161,7 @@ kubectl get pods -n openclaw --sort-by=.metadata.creationTimestamp | grep backup
 ```bash
 # Run the backup dispatcher job now
 kubectl create job manual-backup-$(date +%s) \
-  --from=cronjob/openclaw-pvc-backup-dispatcher \
+  --from=cronjob/openclaw-pvc-backup \
   -n openclaw
 
 # Watch progress
