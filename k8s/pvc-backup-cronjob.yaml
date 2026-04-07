@@ -1,0 +1,84 @@
+# ──────────────────────────────────────────────────────────────────────
+# OpenClaw PVC Backup — Kubernetes CronJob
+# ──────────────────────────────────────────────────────────────────────
+# Daily backup of ~/.openclaw/ config to S3.
+# Pure Python, no LLM or OpenClaw gateway dependency.
+#
+# Prerequisites:
+#
+#   1. Create the AWS credentials secret:
+#      kubectl create secret generic openclaw-backup-aws \
+#        --namespace openclaw \
+#        --from-literal=AWS_ACCESS_KEY_ID='AKIA...' \
+#        --from-literal=AWS_SECRET_ACCESS_KEY='...' \
+#        --from-literal=AWS_REGION='ap-southeast-2' \
+#        --from-literal=S3_BUCKET='dame-openclaw-backup'
+#
+#   2. Create the backup script ConfigMap:
+#      kubectl create configmap openclaw-backup-script \
+#        --namespace openclaw \
+#        --from-file=openclaw-backup-s3.py=scripts/openclaw-backup-s3.py
+#
+#   3. Apply this manifest:
+#      kubectl apply -f k8s/pvc-backup-cronjob.yaml
+#
+# The PVC claim name (openclaw-data) must match your deployment.
+# Check with: kubectl get pvc -n openclaw
+# ──────────────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openclaw-pvc-backup
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw-pvc-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: openclaw
+spec:
+  schedule: "0 2 * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: openclaw-pvc-backup
+            app.kubernetes.io/component: backup
+        spec:
+          containers:
+            - name: backup
+              image: python:3.11-slim
+              command: ["python3", "/scripts/openclaw-backup-s3.py"]
+              envFrom:
+                - secretRef:
+                    name: openclaw-backup-aws
+              env:
+                - name: HOME
+                  value: /home/node
+              volumeMounts:
+                - name: data
+                  mountPath: /home/node/.openclaw
+                  readOnly: true
+                - name: backup-script
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: openclaw-data
+            - name: backup-script
+              configMap:
+                name: openclaw-backup-script
+          restartPolicy: OnFailure
