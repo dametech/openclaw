@@ -37,7 +37,7 @@ OS="linux"
 # ── Version Pins ───────────────────────────────────────────────────
 GO_VERSION="1.24.1"
 GH_VERSION="2.69.0"
-KUBECTL_VERSION="1.35.3"
+KUBECTL_VERSION="1.34.6"
 HELM_VERSION="3.17.3"
 AWS_CLI_VERSION="2.34.12"     # AWS CLI v2 (pinned)
 OP_VERSION="2.30.3"
