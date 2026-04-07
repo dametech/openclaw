@@ -8,12 +8,12 @@ OpenClaw uses a **WebSocket-based Gateway API**, not a traditional REST API. The
 
 **Gateway URL (HTTPS via nginx):**
 ```
-https://10.0.2.162
+https://<openclaw-private-ip>
 ```
 
 **Gateway URL (HTTP direct):**
 ```
-http://10.0.2.162:18789
+http://<openclaw-private-ip>:18789
 ```
 
 **Authentication Token:**
@@ -39,7 +39,7 @@ openclaw agent \
 ```
 
 **Available Agents:**
-- `4ndr3w`
+- `<your-agent-id>`
 - `srumm4st3r`
 - `marc`
 - `nick`
@@ -53,7 +53,7 @@ openclaw agent \
 **Example:**
 ```bash
 openclaw agent \
-  --agent 4ndr3w \
+  --agent <your-agent-id> \
   --message "Hello, please summarize the current date and time" \
   --json
 ```
@@ -132,7 +132,7 @@ Access the web-based Control UI with full agent management.
 
 **URL (with authentication):**
 ```
-https://10.0.2.162/?token=<YOUR-OPENCLAW-TOKEN>
+https://<openclaw-private-ip>/?token=<YOUR-OPENCLAW-TOKEN>
 ```
 
 **Features:**
@@ -157,7 +157,7 @@ ssh -L 18789:127.0.0.1:18789 ec2-user@<bastion-or-ec2-with-access>
 **Execute CLI commands:**
 ```bash
 ssh ec2-user@<bastion> \
-  "su - ssm-user -c 'openclaw agent --agent 4ndr3w --message \"Hello\" --json'"
+  "su - ssm-user -c 'openclaw agent --agent <your-agent-id> --message \"Hello\" --json'"
 ```
 
 ### Option 2: WebSocket Client (Direct Integration)
@@ -166,7 +166,7 @@ OpenClaw uses WebSocket for real-time communication. You can build a WebSocket c
 
 **WebSocket Connection URL:**
 ```
-wss://10.0.2.162/
+wss://<openclaw-private-ip>/
 ```
 
 **Authentication:**
@@ -212,7 +212,7 @@ def openclaw_chat(agent_id, message):
     return json.loads(output['StandardOutputContent'])
 
 # Usage
-result = openclaw_chat('4ndr3w', 'Hello, please respond briefly')
+result = openclaw_chat('<your-agent-id>', 'Hello, please respond briefly')
 print(result['result']['payloads'][0]['text'])
 ```
 
@@ -220,7 +220,7 @@ print(result['result']['payloads'][0]['text'])
 ```bash
 #!/bin/bash
 
-AGENT_ID="4ndr3w"
+AGENT_ID="<your-agent-id>"
 MESSAGE="Hello, this is a test"
 
 COMMAND_ID=$(aws ssm send-command \
@@ -250,8 +250,8 @@ Each agent has its own workspace and configuration:
 **Agent Details (from openclaw.json):**
 ```json
 {
-  "id": "4ndr3w",
-  "workspace": "/home/ssm-user/.openclaw/workspace-4ndr3w",
+  "id": "<your-agent-id>",
+  "workspace": "/home/ssm-user/.openclaw/workspace-<your-agent-id>",
   "model": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
 }
 ```
@@ -272,7 +272,7 @@ Each agent has its own workspace and configuration:
 ```bash
 openclaw agent \
   --session-id my-custom-session \
-  --agent 4ndr3w \
+  --agent <your-agent-id> \
   --message "Start of conversation"
 ```
 
@@ -280,7 +280,7 @@ openclaw agent \
 ```bash
 openclaw agent \
   --session-id my-custom-session \
-  --agent 4ndr3w \
+  --agent <your-agent-id> \
   --message "Continue our previous conversation"
 ```
 
@@ -290,7 +290,7 @@ Control the agent's reasoning depth:
 
 ```bash
 openclaw agent \
-  --agent 4ndr3w \
+  --agent <your-agent-id> \
   --message "Complex problem to solve" \
   --thinking high
 ```
@@ -303,7 +303,7 @@ Enable detailed logging for debugging:
 
 ```bash
 openclaw agent \
-  --agent 4ndr3w \
+  --agent <your-agent-id> \
   --message "Debug this issue" \
   --verbose on
 ```
@@ -314,7 +314,7 @@ Extend timeout for long-running tasks:
 
 ```bash
 openclaw agent \
-  --agent 4ndr3w \
+  --agent <your-agent-id> \
   --message "Complex analysis task" \
   --timeout 300
 ```
@@ -401,7 +401,7 @@ tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log
    - Never commit token to version control
 
 2. **Network Access:**
-   - Access only from VPC (10.0.0.0/16)
+   - Access only from VPC (<vpc-cidr>)
    - Use VPN for remote access
    - HTTPS for all connections
 

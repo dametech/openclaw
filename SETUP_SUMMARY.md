@@ -7,9 +7,9 @@
 - **Instance ID**: <YOUR-INSTANCE-ID>
 - **Instance Name**: openclaw-ec2
 - **Instance Type**: t3.medium
-- **Private IP**: 10.0.2.162
+- **Private IP**: <openclaw-private-ip>
 - **Region**: ap-southeast-2
-- **VPC**: DAME-AWS-VPC (vpc-0b0b6cebfa4d51b5b, 10.0.0.0/16)
+- **VPC**: <your-vpc-name> (<vpc-id>, <vpc-cidr>)
 
 ---
 
@@ -19,13 +19,13 @@
 **Security Group**: sg-073302608b92c1769 (openclaw-ec2-sg)
 
 **Added Rules:**
-- **Port 443** (HTTPS): From VPC CIDR 10.0.0.0/16
+- **Port 443** (HTTPS): From VPC CIDR <vpc-cidr>
   - Purpose: HTTPS access to OpenClaw Control UI via nginx
-- **Port 3978** (TCP): From VPC CIDR 10.0.0.0/16
+- **Port 3978** (TCP): From VPC CIDR <vpc-cidr>
   - Purpose: MS Teams webhook (already existed, verified)
-- **Port 80** (HTTP): From VPC CIDR 10.0.0.0/16 and ALB
+- **Port 80** (HTTP): From VPC CIDR <vpc-cidr> and ALB
   - Purpose: Web server (already existed, verified)
-- **Port 18789** (TCP): From VPC CIDR 10.0.0.0/16
+- **Port 18789** (TCP): From VPC CIDR <vpc-cidr>
   - Purpose: Direct OpenClaw Gateway API access
 
 ### 2. SSL Certificate Generation
@@ -39,8 +39,8 @@
 - Type: Self-signed X.509 certificate
 - Key Size: RSA 2048-bit
 - Validity: 365 days
-- Subject: C=AU, ST=NSW, L=Sydney, O=DAME, CN=10.0.2.162
-- Subject Alternative Name: IP:10.0.2.162
+- Subject: C=AU, ST=NSW, L=Sydney, O=<your-org>, CN=<openclaw-private-ip>
+- Subject Alternative Name: IP:<openclaw-private-ip>
 
 ### 3. Nginx HTTPS Configuration
 **File Created**: `/etc/nginx/conf.d/openclaw-https.conf`
@@ -55,7 +55,7 @@ map $http_upgrade $connection_upgrade {
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name 10.0.2.162;
+    server_name <openclaw-private-ip>;
 
     ssl_certificate /etc/nginx/ssl/openclaw.crt;
     ssl_certificate_key /etc/nginx/ssl/openclaw.key;
@@ -104,8 +104,8 @@ server {
    - Applied using: `openclaw doctor --fix`
 
 2. **Allowed Origins:**
-   - Added: `https://10.0.2.162`
-   - Added: `http://10.0.2.162:18789`
+   - Added: `https://<openclaw-private-ip>`
+   - Added: `http://<openclaw-private-ip>:18789`
    - Existing: `http://localhost:18789`
    - Existing: `http://127.0.0.1:18789`
 
@@ -121,10 +121,10 @@ server {
   "bind": "lan",
   "controlUi": {
     "allowedOrigins": [
-      "http://10.0.2.162:18789",
+      "http://<openclaw-private-ip>:18789",
       "http://127.0.0.1:18789",
       "http://localhost:18789",
-      "https://10.0.2.162"
+      "https://<openclaw-private-ip>"
     ]
   },
   "auth": {
@@ -173,7 +173,7 @@ server {
 
 **Primary URL:**
 ```
-https://10.0.2.162/?token=<YOUR-OPENCLAW-TOKEN>
+https://<openclaw-private-ip>/?token=<YOUR-OPENCLAW-TOKEN>
 ```
 
 **Helper Script:**
@@ -191,13 +191,13 @@ https://10.0.2.162/?token=<YOUR-OPENCLAW-TOKEN>
 ```bash
 curl -k \
   -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
-  https://10.0.2.162/api/agents
+  https://<openclaw-private-ip>/api/agents
 ```
 
 **HTTP Direct:**
 ```bash
 curl -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
-  http://10.0.2.162:18789/api/agents
+  http://<openclaw-private-ip>:18789/api/agents
 ```
 
 ### Gateway Token
@@ -211,15 +211,15 @@ curl -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
 
 ### Public Access (MS Teams)
 1. **Internet** → HTTPS (443) → **ALB** (openclaw-alb-56373705.ap-southeast-2.elb.amazonaws.com)
-2. **ALB** → HTTP (80) → **EC2** nginx (10.0.2.162:80)
+2. **ALB** → HTTP (80) → **EC2** nginx (<openclaw-private-ip>:80)
 3. **nginx** → **openclaw** MS Teams webhook (localhost:3978)
 
 ### VPC Access (Control UI & API)
-1. **VPC** → HTTPS (443) → **nginx** (10.0.2.162:443)
+1. **VPC** → HTTPS (443) → **nginx** (<openclaw-private-ip>:443)
 2. **nginx** → **OpenClaw Gateway** (localhost:18789)
 
 ### Direct Gateway Access (VPC-only, HTTP)
-1. **VPC** → HTTP (18789) → **OpenClaw Gateway** (10.0.2.162:18789)
+1. **VPC** → HTTP (18789) → **OpenClaw Gateway** (<openclaw-private-ip>:18789)
 
 ---
 
@@ -227,10 +227,10 @@ curl -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
 
 | Port  | Protocol | Access From        | Purpose                           | SSL |
 |-------|----------|-------------------|-----------------------------------|-----|
-| 443   | HTTPS    | VPC (10.0.0.0/16) | Control UI & API via nginx        | ✓   |
+| 443   | HTTPS    | VPC (<vpc-cidr>) | Control UI & API via nginx        | ✓   |
 | 80    | HTTP     | VPC + ALB         | MS Teams webhook via nginx        | -   |
-| 3978  | HTTP     | VPC (10.0.0.0/16) | MS Teams Bot Framework endpoint   | -   |
-| 18789 | HTTP     | VPC (10.0.0.0/16) | Direct OpenClaw Gateway API       | -   |
+| 3978  | HTTP     | VPC (<vpc-cidr>) | MS Teams Bot Framework endpoint   | -   |
+| 18789 | HTTP     | VPC (<vpc-cidr>) | Direct OpenClaw Gateway API       | -   |
 
 ---
 
@@ -241,7 +241,7 @@ Returns the complete Control UI URL with token:
 ```bash
 ./get-openclaw-url.sh
 ```
-Output: `https://10.0.2.162/?token=<YOUR-OPENCLAW-TOKEN>`
+Output: `https://<openclaw-private-ip>/?token=<YOUR-OPENCLAW-TOKEN>`
 
 ### 2. connect-openclaw.sh
 SSM port forwarding for local access:
@@ -291,7 +291,7 @@ Tests connectivity to openclaw from within VPC:
 ### Test HTTPS Access
 ```bash
 curl -k -s -H "Authorization: Bearer <YOUR-OPENCLAW-TOKEN>" \
-  https://10.0.2.162/ | head -5
+  https://<openclaw-private-ip>/ | head -5
 ```
 
 Expected: HTML content from OpenClaw Control UI
@@ -361,8 +361,8 @@ journalctl -u openclaw -n 50 --no-pager
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout /etc/nginx/ssl/openclaw.key \
   -out /etc/nginx/ssl/openclaw.crt \
-  -subj "/C=AU/ST=NSW/L=Sydney/O=DAME/CN=10.0.2.162" \
-  -addext "subjectAltName=IP:10.0.2.162"
+  -subj "/C=AU/ST=NSW/L=Sydney/O=<your-org>/CN=<openclaw-private-ip>" \
+  -addext "subjectAltName=IP:<openclaw-private-ip>"
 systemctl reload nginx
 ```
 

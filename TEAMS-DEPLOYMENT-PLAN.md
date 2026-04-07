@@ -89,7 +89,7 @@ Once Teams integration is working over HTTP, add HTTPS:
 ```bash
 # Request cert in ACM for your domain
 aws acm request-certificate \
-  --domain-name openclaw.au01-0.dametech.net \
+  --domain-name openclaw.<your-domain> \
   --validation-method DNS \
   --region ap-southeast-2 \
   --profile personal
@@ -103,7 +103,7 @@ aws acm request-certificate \
 ## Alternative: Use Existing Domain/Cert
 
 Do you already have:
-- A wildcard certificate for `*.dametech.net`?
+- A wildcard certificate for `*.<your-domain>`?
 - An existing ACM certificate you can use?
 
 This would be the fastest path!

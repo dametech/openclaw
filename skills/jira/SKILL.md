@@ -9,7 +9,7 @@ Read the full reference at `references/jira.md`.
 
 ## Quick Start
 
-**For reads and simple writes:** use the `jira_query` tool with `loginKey: "4ndr3w"`.
+**For reads and simple writes:** use the `jira_query` tool with `loginKey: "<your-agent-id>"`.
 
 **For formatted comments:** always use `scripts/adf.py` via Python — never use `jira_query comment_add` for anything beyond a plain one-liner.
 
@@ -20,7 +20,7 @@ import sys, json, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../scripts"))
 from adf import JiraClient, heading, p, pb, bullet, ordered, code_block, panel, rule
 
-with open(os.path.expanduser("~/.openclaw/.jira-credentials/4ndr3w.json")) as f:
+with open(os.path.expanduser("~/.openclaw/.jira-credentials/<your-agent-id>.json")) as f:
     creds = json.load(f)
 
 jira = JiraClient(creds["baseUrl"], creds["email"], creds["apiToken"])
@@ -33,11 +33,11 @@ jira.add_comment("PROJ-123", [
 ])
 ```
 
-The skill directory is at: `/home/ssm-user/.openclaw/workspace-4ndr3w/skills/jira`
+The skill directory is at: `/home/ssm-user/.openclaw/workspace-<your-agent-id>/skills/jira`
 
 ## Key Rules
 
-- Always pass `loginKey: "4ndr3w"` to `jira_query`
+- Always pass `loginKey: "<your-agent-id>"` to `jira_query`
 - Rich comments → `scripts/adf.py` (renders properly in Jira UI)
 - Plain one-liners → `jira_query comment_add` is acceptable
 - See `references/jira.md` for credentials, JQL patterns, ADF node reference, and transition names

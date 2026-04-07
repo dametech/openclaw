@@ -92,7 +92,7 @@ Reply with:
 
 ## Notes
 
-- **All meetings use `scrumm4st3r@dame.energy`** as organiser — never the requester's account
+- **All meetings use `<organiser-email@your-domain>`** as organiser — never the requester's account
 - **The requester is always added as a `required` attendee** — even if they don't list themselves
 - The invite body attribution format is: *"This call was scheduled by Scrummaster on behalf of **[Name]**."*
 - **Do NOT pass `onlineMeetingUrl` in the events body** — it is ignored by the API and a new meeting is always created

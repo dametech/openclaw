@@ -3,7 +3,7 @@
 # OpenClaw Control UI URL Generator
 # Returns the full URL with authentication token for accessing the Control UI
 
-OPENCLAW_IP="10.0.2.162"
+OPENCLAW_IP="<openclaw-private-ip>"
 OPENCLAW_TOKEN="<YOUR-OPENCLAW-TOKEN>"
 
 # Output the complete URL

@@ -2,12 +2,12 @@
 
 ## Overview
 The openclaw-ec2 instance can be accessed in two ways:
-1. **Direct VPC Access**: Connect directly to 10.0.2.162 from any instance in the VPC
+1. **Direct VPC Access**: Connect directly to <openclaw-private-ip> from any instance in the VPC
 2. **SSM Session Manager**: Secure access via AWS Systems Manager (no SSH keys or public IPs needed)
 
 ## Instance Details
 - **Instance ID**: <YOUR-INSTANCE-ID>
-- **Private IP**: 10.0.2.162
+- **Private IP**: <openclaw-private-ip>
 - **Region**: ap-southeast-2
 - **SSM Status**: Online
 
@@ -18,10 +18,10 @@ The openclaw-ec2 instance can be accessed in two ways:
 
 ## Security Group Rules
 The instance security group (`openclaw-ec2-sg`) allows:
-- **Port 443**: From VPC CIDR (10.0.0.0/16) - HTTPS (nginx → OpenClaw Gateway)
-- **Port 3978**: From VPC CIDR (10.0.0.0/16) - MS Teams webhook
-- **Port 80**: From VPC CIDR (10.0.0.0/16) and ALB - Web server
-- **Port 18789**: From VPC CIDR (10.0.0.0/16) - OpenClaw Gateway API (direct)
+- **Port 443**: From VPC CIDR (<vpc-cidr>) - HTTPS (nginx → OpenClaw Gateway)
+- **Port 3978**: From VPC CIDR (<vpc-cidr>) - MS Teams webhook
+- **Port 80**: From VPC CIDR (<vpc-cidr>) and ALB - Web server
+- **Port 18789**: From VPC CIDR (<vpc-cidr>) - OpenClaw Gateway API (direct)
 - **All outbound**: Allowed
 
 ## Architecture
@@ -29,39 +29,39 @@ The instance security group (`openclaw-ec2-sg`) allows:
 **Public Access (MS Teams):**
 MS Teams reaches openclaw via:
 1. **Internet** → HTTPS (443) → **ALB** (openclaw-alb-56373705.ap-southeast-2.elb.amazonaws.com)
-2. **ALB** → HTTP (80) → **EC2** (10.0.2.162:80)
+2. **ALB** → HTTP (80) → **EC2** (<openclaw-private-ip>:80)
 3. **nginx** → **openclaw** (port 3978)
 
 **VPC Access (Control UI):**
 Apps/browsers in VPC access openclaw via:
-1. **VPC** → HTTPS (443) → **nginx** (10.0.2.162:443)
+1. **VPC** → HTTPS (443) → **nginx** (<openclaw-private-ip>:443)
 2. **nginx** → **OpenClaw Gateway** (localhost:18789)
 
 **SSL Configuration:**
 - Self-signed certificate located at `/etc/nginx/ssl/openclaw.{crt,key}`
 - Valid for 365 days
-- Subject: CN=10.0.2.162
+- Subject: CN=<openclaw-private-ip>
 - Nginx config: `/etc/nginx/conf.d/openclaw-https.conf`
 
 ---
 
 ## Method 1: Direct VPC Access (Primary)
 
-Access openclaw directly from any instance in the VPC (10.0.0.0/16):
+Access openclaw directly from any instance in the VPC (<vpc-cidr>):
 
 ### From another EC2 instance in the VPC:
 ```bash
 # Test connectivity
-curl http://10.0.2.162:3978
+curl http://<openclaw-private-ip>:3978
 
 # Or access the web interface
-curl http://10.0.2.162:80
+curl http://<openclaw-private-ip>:80
 ```
 
 ### Available from these instances:
-- GallagherServer-VPC (10.0.30.198)
-- DAME-CFG-BKP-SRV-PROD (10.0.2.202)
-- FortiGate instances (10.0.1.10, 10.0.10.10)
+- <internal-server> (<internal-ip>)
+- <internal-server> (<internal-ip>)
+- <firewall> instances (<internal-ip>, <internal-ip>)
 - Any other instance in the VPC
 
 ### OpenClaw Gateway API & Control UI
@@ -74,14 +74,14 @@ Access the OpenClaw Control UI via HTTPS from within the VPC:
 TOKEN="<YOUR-OPENCLAW-TOKEN>"
 
 # Access via HTTPS (through nginx)
-curl -k -H "Authorization: Bearer $TOKEN" https://10.0.2.162/
+curl -k -H "Authorization: Bearer $TOKEN" https://<openclaw-private-ip>/
 
 # Make API calls via HTTPS
-curl -k -H "Authorization: Bearer $TOKEN" https://10.0.2.162/api/agents
+curl -k -H "Authorization: Bearer $TOKEN" https://<openclaw-private-ip>/api/agents
 ```
 
 **Web UI Access:**
-Open in browser: `https://10.0.2.162` (requires VPN connection)
+Open in browser: `https://<openclaw-private-ip>` (requires VPN connection)
 
 **Note:** The SSL certificate is self-signed, so you'll need to accept the security warning in your browser or use `-k` flag with curl.
 
@@ -89,7 +89,7 @@ Open in browser: `https://10.0.2.162` (requires VPN connection)
 You can also access the gateway directly on port 18789:
 ```bash
 # Direct HTTP access
-curl -H "Authorization: Bearer $TOKEN" http://10.0.2.162:18789/
+curl -H "Authorization: Bearer $TOKEN" http://<openclaw-private-ip>:18789/
 ```
 
 ---

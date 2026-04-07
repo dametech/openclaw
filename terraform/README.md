@@ -43,8 +43,8 @@ Before running Terraform:
    - OpenClaw deployed in `openclaw` namespace
 
 4. **S3 Backend**
-   - S3 bucket: `dame-terraform-state`
-   - DynamoDB table: `dame-terraform-locks` (for state locking)
+   - S3 bucket: `<your-tf-state-bucket>`
+   - DynamoDB table: `<your-tf-locks-table>` (for state locking)
 
 ## Quick Start
 
@@ -401,5 +401,5 @@ See `docs/TEAMS-SETUP.md` for complete integration guide.
 ---
 
 **Managed by**: Terraform
-**State Backend**: S3 (`dame-terraform-state/openclaw/teams-alb/`)
+**State Backend**: S3 (`<your-tf-state-bucket>/openclaw/teams-alb/`)
 **Provider Versions**: AWS ~> 5.0, Kubernetes ~> 2.0
