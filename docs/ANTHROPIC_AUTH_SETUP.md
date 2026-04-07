@@ -73,7 +73,7 @@ kubectl logs -n openclaw deploy/openclaw -c main --tail=50 | \
 The auth-profiles.json files are stored in `/home/node/.openclaw/agents/`, which is mounted from a PersistentVolumeClaim. They will survive pod restarts.
 
 ### Backup Location
-S3 backup: `s3://dame-openclaw-backup/openclaw-backups/au01-0/`
+S3 backup: `s3://<your-bucket>/<your-backup-prefix>/`
 
 ## Recovery Procedure
 
