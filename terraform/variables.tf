@@ -33,3 +33,9 @@ variable "existing_https_listener_port" {
   type        = number
   default     = 443
 }
+
+variable "ingress_target_ips" {
+  description = "Private IP addresses for the ingress-nginx endpoint that the ALB should forward to"
+  type        = list(string)
+  default     = ["10.42.32.210"]
+}

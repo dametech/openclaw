@@ -223,7 +223,7 @@ zip -r openclaw-teams-app.zip manifest.json color.png outline.png
 
 ### Post-Deploy Enablement Script
 
-If the shared wildcard ALB edge is already configured and your Azure Bot already exists, you can enable Teams on an existing OpenClaw release with:
+If your Azure Bot already exists, you can enable Teams on an existing OpenClaw release with:
 
 ```bash
 ./setup-msteams-integration.sh
@@ -231,9 +231,10 @@ If the shared wildcard ALB edge is already configured and your Azure Bot already
 
 This script assumes:
 
-- the shared ALB already exists
-- the wildcard certificate for `*.openclaw.dametech.net` is already attached
-- wildcard DNS already points at the shared ALB
+- `ingress-nginx` is running in the cluster
+- the shared ALB forwards `*.openclaw.dametech.net` traffic to `ingress-nginx`
+- wildcard DNS for `*.openclaw.dametech.net` ultimately routes to your ingress entrypoint
+- TLS/public exposure is handled separately outside this script
 - you already have the Teams `appId`, `appPassword`, and `tenantId`
 
 The script derives the public Teams endpoint from the release name:
@@ -244,26 +245,22 @@ https://<release>.openclaw.dametech.net/api/messages
 
 It then:
 
+- copies the vendored local `plugins/msteams` source into the target pod and installs it via the OpenClaw CLI
 - creates a Teams credentials secret for that release
 - creates a release-specific NodePort service for the Teams webhook
+- creates a release-specific `Ingress` routing `/api/messages` to that service
 - patches `openclaw.json` to enable `channels.msteams`
-- installs the `@openclaw/msteams` plugin in the running release
-- creates a host-based ALB rule routing the derived hostname to that release
 
 ### Install Teams Plugin
 
-Since January 2026, Teams is a separate plugin:
+This repo vendors the Teams plugin source under [`plugins/msteams`](/mnt/c/projects/openclaw/plugins/msteams).
+`setup-msteams-integration.sh` copies that folder into the target pod and runs:
 
 ```bash
-# Inside the OpenClaw pod
-openclaw plugins install @openclaw/msteams
+openclaw plugins install /tmp/openclaw-msteams-source
 ```
 
-Or install during deployment (init container):
-
-```bash
-npm install -g @openclaw/msteams
-```
+This avoids the broken registry-based install path that was failing under ClawHub in the running pod.
 
 ### Configure openclaw.json
 
@@ -279,7 +276,8 @@ npm install -g @openclaw/msteams
         "port": 3978,
         "path": "/api/messages"
       },
-      "dmPolicy": "pairing",
+      "dmPolicy": "open",
+      "allowFrom": ["*"],
       "groupPolicy": "open"
     }
   }
@@ -300,7 +298,8 @@ npm install -g @openclaw/msteams
         "port": 3978,
         "path": "/api/messages"
       },
-      "dmPolicy": "pairing",
+      "dmPolicy": "open",
+      "allowFrom": ["*"],
       "groupPolicy": "open"
     }
   }
@@ -521,10 +520,10 @@ Requires Graph API permissions:
 {
   "channels": {
     "msteams": {
-      "dmPolicy": "pairing",
+      "dmPolicy": "open",
       "groupPolicy": "allowlist",
       "groupAllowFrom": ["user@company.com"],
-      "allowFrom": ["user-aad-object-id"]
+      "allowFrom": ["*"]
     }
   }
 }
@@ -535,7 +534,7 @@ Requires Graph API permissions:
 1. **Store credentials in 1Password** or Azure Key Vault
 2. **Use TLS for webhooks** (Let's Encrypt with cert-manager)
 3. **Validate webhook signatures** (Bot Framework signature validation)
-4. **Use pairing mode** for DMs
+4. **Use `dmPolicy: "open"`** when everyone in your tenant should be able to DM the bot directly
 5. **Allowlist channels** for production
 6. **Rotate client secrets** every 90 days
 7. **Monitor audit logs** in Azure

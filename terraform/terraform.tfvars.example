@@ -9,6 +9,11 @@ environment = "prod"
 existing_alb_name = "openclaw-alb"
 existing_https_listener_port = 443
 
+# Private ingress-nginx endpoint(s) reachable from the ALB VPC/VPN
+ingress_target_ips = [
+  "10.42.32.210",
+]
+
 # Route53 / ACM wildcard certificate
 route53_zone_name = "dametech.net"
 wildcard_domain_name = "*.openclaw.dametech.net"
