@@ -132,6 +132,30 @@ kubectl exec -n openclaw deployment/openclaw -- \
 
 ---
 
+## kubectl Quick Reference — Backup Monitoring
+
+```bash
+# Check the cronjob schedule, last run time, and suspend status
+kubectl get cronjob -n openclaw
+
+# Full detail (schedule, last successful time, events)
+kubectl describe cronjob openclaw-pvc-backup-dispatcher -n openclaw
+
+# List all backup jobs and their status
+kubectl get job -n openclaw --sort-by=.metadata.creationTimestamp
+
+# Watch jobs in real time
+kubectl get job -n openclaw --sort-by=.metadata.creationTimestamp -w
+
+# Tail logs from a specific backup job
+kubectl logs -n openclaw job/openclaw-pvc-backup-openclaw-<job-id>
+
+# Check backup pod status
+kubectl get pods -n openclaw --sort-by=.metadata.creationTimestamp | grep backup
+```
+
+---
+
 ## Triggering a manual backup
 
 ```bash
