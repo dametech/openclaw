@@ -38,13 +38,13 @@ variable "public_subnet_ids" {
 variable "domain_name" {
   description = "Domain name for OpenClaw Teams webhook"
   type        = string
-  default     = "openclaw.au01-0.dametech.net"
+  default     = "openclaw.<your-domain>"
 }
 
 variable "route53_zone_name" {
-  description = "Route53 hosted zone name (e.g., dametech.net)"
+  description = "Route53 hosted zone name (e.g., <your-domain>)"
   type        = string
-  default     = "dametech.net"
+  default     = "<your-domain>"
 }
 
 variable "k8s_worker_nodes" {

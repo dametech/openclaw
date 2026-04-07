@@ -9,7 +9,7 @@ set -e
 # Configuration
 AWS_REGION="${AWS_REGION:-ap-southeast-2}"
 AWS_PROFILE="${AWS_PROFILE:-personal}"
-DOMAIN_NAME="${1:-openclaw.au01-0.dametech.net}"
+DOMAIN_NAME="${1:-openclaw.<your-domain>}"
 
 # Colors
 GREEN='\033[0;32m'
@@ -42,7 +42,7 @@ find_hosted_zone() {
     log_step "Finding Route53 Hosted Zone"
 
     # Extract base domain from full domain
-    # openclaw.au01-0.dametech.net → dametech.net
+    # openclaw.<your-domain> → <your-domain>
     BASE_DOMAIN=$(echo "$DOMAIN_NAME" | awk -F. '{print $(NF-1)"."$NF}')
 
     log_info "Looking for hosted zone: $BASE_DOMAIN"
@@ -226,7 +226,7 @@ main() {
 
     if [ -z "$DOMAIN_NAME" ]; then
         echo "Usage: $0 <domain-name>"
-        echo "Example: $0 openclaw.au01-0.dametech.net"
+        echo "Example: $0 openclaw.<your-domain>"
         exit 1
     fi
 

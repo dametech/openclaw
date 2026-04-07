@@ -6,15 +6,15 @@ Run at 8:15 AM AEDT daily via cron. Follow these steps to run manually.
 
 1. **Run scans on both subnets:**
    ```bash
-   /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli/miner-cli scan 10.45.78.0/24 --check-errors
-   /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli/miner-cli scan 10.45.79.0/24 --check-errors
+   /home/ssm-user/.openclaw/workspace-<your-agent-id>/miner-cli/miner-cli scan <miner-subnet-1> --check-errors
+   /home/ssm-user/.openclaw/workspace-<your-agent-id>/miner-cli/miner-cli scan <miner-subnet-2> --check-errors
    ```
 
 2. **Collect all miners listed under ERROR CODES DETECTED** — note each IP + MAC address.
 
 3. **Fetch tank location data:**
    ```bash
-   curl -s https://control-tank-lookup.au01-1a.dametech.net/au01-1
+   curl -s https://<internal-lookup-host>/au01-1
    ```
    For each error miner, look up MAC in the JSON response to get:
    - `rackId` → tank name
@@ -23,7 +23,7 @@ Run at 8:15 AM AEDT daily via cron. Follow these steps to run manually.
 
 4. **Read error trend baseline:**
    ```
-   /home/ssm-user/.openclaw/workspace-4ndr3w/memory/error-trend.json
+   /home/ssm-user/.openclaw/workspace-<your-agent-id>/memory/error-trend.json
    ```
 
 5. **Post to Teams** — target conversation:
@@ -41,7 +41,7 @@ Run at 8:15 AM AEDT daily via cron. Follow these steps to run manually.
 
 | IP | MAC | Location | Errors |
 |----|-----|----------|--------|
-| 10.45.78.x | aa:bb:cc:dd:ee:ff | Tank-3 Row 2 Pos 14 | [541] Slot1 chip id error |
+| <miner-ip> | aa:bb:cc:dd:ee:ff | Tank-3 Row 2 Pos 14 | [541] Slot1 chip id error |
 ...
 
 📊 Error trend: {N} errors (▲/▼/= vs yesterday's {M})

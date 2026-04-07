@@ -8,21 +8,21 @@ description: Manage, scan, monitor, and report on Bitcoin miner fleets using the
 ## Binary
 
 ```
-/home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli/miner-cli
+/home/ssm-user/.openclaw/workspace-<your-agent-id>/miner-cli/miner-cli
 ```
 
 ## Installation
 
 **Clone and build (first time):**
 ```bash
-git clone https://github.com/sinkers/miner-cli /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
-cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
+git clone https://github.com/sinkers/miner-cli /home/ssm-user/.openclaw/workspace-<your-agent-id>/miner-cli
+cd /home/ssm-user/.openclaw/workspace-<your-agent-id>/miner-cli
 make build
 ```
 
 **Rebuild after code changes:**
 ```bash
-cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
+cd /home/ssm-user/.openclaw/workspace-<your-agent-id>/miner-cli
 make build
 # or directly:
 go build -o miner-cli .
@@ -30,7 +30,7 @@ go build -o miner-cli .
 
 **Install to GOPATH/bin (optional, makes it available system-wide):**
 ```bash
-cd /home/ssm-user/.openclaw/workspace-4ndr3w/miner-cli
+cd /home/ssm-user/.openclaw/workspace-<your-agent-id>/miner-cli
 make install
 # binary lands at $(go env GOPATH)/bin/miner-cli
 ```
@@ -48,13 +48,13 @@ When a user names a site, expand to the corresponding IP ranges automatically:
 
 | Site Name | IP Ranges | Description |
 |-----------|-----------|-------------|
-| au01-1 | 10.45.78.0/24 10.45.79.0/24 | AU01-1 — MDC1 + MDC2 |
-| au01-1a | 10.45.78.0/24 | AU01-1a — MDC1 only |
-| au01-1b | 10.45.79.0/24 | AU01-1b — MDC2 only |
+| au01-1 | <miner-subnet-1> <miner-subnet-2> | AU01-1 — MDC1 + MDC2 |
+| au01-1a | <miner-subnet-1> | AU01-1a — MDC1 only |
+| au01-1b | <miner-subnet-2> | AU01-1b — MDC2 only |
 
 Example: "run a miner scan on au01-1" →
 ```bash
-miner-cli scan 10.45.78.0/24 10.45.79.0/24 --check-errors
+miner-cli scan <miner-subnet-1> <miner-subnet-2> --check-errors
 ```
 
 ## Scan Command (primary use)
@@ -64,19 +64,19 @@ miner-cli scan 10.45.78.0/24 10.45.79.0/24 --check-errors
 miner-cli scan <IP_RANGES...> --check-errors
 
 # With verbose output
-miner-cli scan 10.45.78.0/24 --check-errors -v
+miner-cli scan <miner-subnet-1> --check-errors -v
 
 # With switch port mapping (SNMP)
-miner-cli scan 10.45.78.0/24 --check-errors --switch <switch-ip> --community public
+miner-cli scan <miner-subnet-1> --check-errors --switch <switch-ip> --community public
 
 # With Braiins auth for MAC retrieval
-miner-cli scan 10.45.78.0/24 --check-errors --braiins-user root --braiins-pass root
+miner-cli scan <miner-subnet-1> --check-errors --braiins-user root --braiins-pass root
 
 # JSON output for scripting
-miner-cli scan 10.45.78.0/24 --check-errors -o json
+miner-cli scan <miner-subnet-1> --check-errors -o json
 
 # With chip temps (slower)
-miner-cli scan 10.45.78.0/24 --check-errors --scan-temps
+miner-cli scan <miner-subnet-1> --check-errors --scan-temps
 ```
 
 ## Other Commands

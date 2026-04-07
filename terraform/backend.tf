@@ -1,10 +1,10 @@
 terraform {
   backend "s3" {
-    bucket         = "dame-terraform-state"
+    bucket         = "<your-tf-state-bucket>"
     key            = "openclaw/teams-alb/terraform.tfstate"
     region         = "ap-southeast-2"
     encrypt        = true
-    dynamodb_table = "dame-terraform-locks"
+    dynamodb_table = "<your-tf-locks-table>"
   }
 
   required_version = ">= 1.0"

@@ -12,18 +12,18 @@ Credentials are stored per-user at `~/.openclaw/.jira-credentials/<loginKey>.jso
 }
 ```
 
-For DAME: loginKey is `4ndr3w`, baseUrl is `https://dame-technologies.atlassian.net`.
+For DAME: loginKey is `<your-jira-login-key>`, baseUrl is `https://<your-jira-domain>`.
 
 Load with:
 ```python
 import json, os
-with open(os.path.expanduser("~/.openclaw/.jira-credentials/4ndr3w.json")) as f:
+with open(os.path.expanduser("~/.openclaw/.jira-credentials/<your-jira-login-key>.json")) as f:
     creds = json.load(f)
 ```
 
 ## jira_query Tool
 
-Use `jira_query` for reads and simple operations. Always pass `loginKey: "4ndr3w"`.
+Use `jira_query` for reads and simple operations. Always pass `loginKey: "<your-jira-login-key>"`.
 
 | Action | Use for |
 |--------|---------|
@@ -47,7 +47,7 @@ sys.path.insert(0, "<skill-dir>/scripts")
 from adf import JiraClient, heading, p, pb, bullet, ordered, code_block, panel, rule
 import json, os
 
-with open(os.path.expanduser("~/.openclaw/.jira-credentials/4ndr3w.json")) as f:
+with open(os.path.expanduser("~/.openclaw/.jira-credentials/<your-jira-login-key>.json")) as f:
     creds = json.load(f)
 
 jira = JiraClient(creds["baseUrl"], creds["email"], creds["apiToken"])

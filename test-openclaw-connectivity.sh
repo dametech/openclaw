@@ -3,7 +3,7 @@
 # Test script to verify connectivity to openclaw from within the VPC
 # Run this on any EC2 instance in the VPC (10.0.0.0/16)
 
-OPENCLAW_IP="10.0.2.162"
+OPENCLAW_IP="<openclaw-private-ip>"
 OPENCLAW_PORT="3978"
 HTTP_PORT="80"
 
