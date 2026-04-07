@@ -24,6 +24,11 @@
 #
 # The PVC claim name (openclaw-data) must match your deployment.
 # Check with: kubectl get pvc -n openclaw
+#
+# Deploy via:
+#   ./scripts/setup-pvc-backup.sh
+#   ./scripts/setup-pvc-backup.sh --dry-run     # preview only
+#   ./scripts/setup-pvc-backup.sh --trigger     # deploy + fire a test run
 # ──────────────────────────────────────────────────────────────────────
 apiVersion: batch/v1
 kind: CronJob
@@ -56,7 +61,8 @@ spec:
               command: ["python3", "/scripts/openclaw-backup-s3.py"]
               envFrom:
                 - secretRef:
-                    name: openclaw-backup-aws
+                    name: openclaw-backup-aws   # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+                                                # AWS_REGION, S3_BUCKET, BACKUP_PREFIX
               env:
                 - name: HOME
                   value: /home/node
