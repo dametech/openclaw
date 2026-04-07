@@ -81,20 +81,26 @@ def _get_signature_key(secret, date_stamp, region, service):
 def s3_put(bucket, key, filepath, region, access_key, secret_key):
     """Upload a file to S3 using PUT with SigV4 auth.
 
-    Reads the file from disk rather than holding it all in memory.
+    Streams the file in chunks for hashing to avoid loading the entire
+    archive into memory (important for large PVC backups in memory-limited
+    Kubernetes pods). The file is then streamed again for the upload via
+    urllib, passing the file object directly rather than buffering bytes.
     """
     service = "s3"
     host = f"{bucket}.s3.{region}.amazonaws.com"
     endpoint = f"https://{host}/{key}"
 
+    # Compute SHA-256 and file size by streaming — never load fully into RAM
+    file_size = os.path.getsize(filepath)
+    sha256 = hashlib.sha256()
     with open(filepath, "rb") as f:
-        data = f.read()
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            sha256.update(chunk)
+    content_hash = sha256.hexdigest()
 
     now        = datetime.datetime.now(datetime.timezone.utc)
     amz_date   = now.strftime("%Y%m%dT%H%M%SZ")
     date_stamp = now.strftime("%Y%m%d")
-
-    content_hash = hashlib.sha256(data).hexdigest()
 
     canonical_uri         = "/" + key
     canonical_querystring = ""
@@ -131,15 +137,17 @@ def s3_put(bucket, key, filepath, region, access_key, secret_key):
         "x-amz-content-sha256": content_hash,
         "Authorization":        authorization,
         "Content-Type":         "application/gzip",
-        "Content-Length":       str(len(data)),
+        "Content-Length":       str(file_size),
     }
 
-    req = urllib.request.Request(endpoint, data=data, headers=headers, method="PUT")
-    try:
-        resp = urllib.request.urlopen(req)
-        return resp.status, resp.read().decode()
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()
+    # Stream the file object directly — urllib will read it in chunks
+    with open(filepath, "rb") as f:
+        req = urllib.request.Request(endpoint, data=f, headers=headers, method="PUT")
+        try:
+            resp = urllib.request.urlopen(req)
+            return resp.status, resp.read().decode()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode()
 
 
 # ── Archive creation ───────────────────────────────────────────────
@@ -239,7 +247,7 @@ def main():
     secret_key    = os.environ.get("AWS_SECRET_ACCESS_KEY")
     region        = os.environ.get("AWS_REGION", "ap-southeast-2")
     bucket        = os.environ.get("S3_BUCKET")
-    backup_prefix = os.environ.get("BACKUP_PREFIX", DEFAULT_BACKUP_PREFIX)
+    backup_prefix = os.environ.get("BACKUP_PREFIX")
 
     # Fall back to credentials file on PVC
     cred_file = os.path.expanduser("~/.openclaw/credentials/aws-backup.json")
@@ -251,7 +259,10 @@ def main():
         secret_key    = secret_key    or creds.get("aws_secret_access_key")
         region        = region        or creds.get("region", "ap-southeast-2")
         bucket        = bucket        or creds.get("bucket")
-        backup_prefix = backup_prefix or creds.get("backup_prefix", DEFAULT_BACKUP_PREFIX)
+        backup_prefix = backup_prefix or creds.get("backup_prefix") or DEFAULT_BACKUP_PREFIX
+
+    # Ensure backup_prefix always has a value regardless of which config path was taken
+    backup_prefix = backup_prefix or DEFAULT_BACKUP_PREFIX
 
     if not args.dry_run and not all([access_key, secret_key, bucket]):
         log("Missing AWS credentials. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET.", level="ERROR")
