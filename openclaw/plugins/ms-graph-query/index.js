@@ -232,8 +232,11 @@ const plugin = {
               ok: true,
               message: body.message,
               user_code: body.user_code,
+              login_code: body.user_code,
               verification_uri: body.verification_uri,
+              device_login_url: body.verification_uri,
               verification_uri_complete: body.verification_uri_complete,
+              device_login_url_complete: body.verification_uri_complete,
               interval: body.interval,
               expires_in: body.expires_in,
             });

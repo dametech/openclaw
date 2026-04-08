@@ -1,0 +1,173 @@
+{
+  "gateway": {
+    "mode": "local",
+    "auth": {
+      "token": __GATEWAY_AUTH_TOKEN_JSON__
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "http://127.0.0.1:18789",
+        "http://localhost:18789"
+      ]
+    },
+    "http": {
+      "endpoints": {
+        "responses": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/home/node/.openclaw/workspace",
+      "model": {
+        "primary": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
+      },
+      "models": {
+        "amazon-bedrock/global.anthropic.claude-sonnet-4-6": {
+          "params": {
+            "cacheRetention": "ephemeral"
+          }
+        },
+        "amazon-bedrock/global.anthropic.claude-opus-4-6-v1": {
+          "params": {
+            "cacheRetention": "ephemeral"
+          }
+        },
+        "amazon-bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": {
+          "params": {
+            "cacheRetention": "none"
+          }
+        }
+      },
+      "userTimezone": "Australia/Brisbane",
+      "timeoutSeconds": 600,
+      "maxConcurrent": 1,
+      "memorySearch": {
+        "provider": "ollama",
+        "model": __OLLAMA_EMBEDDINGS_MODEL_JSON__,
+        "remote": {
+          "baseUrl": "http://ollama-embeddings.openclaw.svc.cluster.local:11434"
+        }
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "identity": {
+          "name": "OpenClaw",
+          "emoji": "🦞"
+        },
+        "model": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
+      }
+    ]
+  },
+  "models": {
+    "providers": {
+      "amazon-bedrock": {
+        "baseUrl": "https://bedrock-runtime.ap-southeast-2.amazonaws.com",
+        "apiKey": "aws-sdk",
+        "api": "bedrock-converse-stream",
+        "models": [
+          {
+            "id": "global.anthropic.claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6 (Bedrock)",
+            "api": "bedrock-converse-stream",
+            "reasoning": true,
+            "input": ["text", "image"],
+            "cost": {
+              "input": 3,
+              "output": 15,
+              "cacheRead": 0.3,
+              "cacheWrite": 3.75
+            },
+            "contextWindow": 200000,
+            "maxTokens": 8000
+          },
+          {
+            "id": "global.anthropic.claude-opus-4-6-v1",
+            "name": "Claude Opus 4.6 (Bedrock)",
+            "api": "bedrock-converse-stream",
+            "reasoning": true,
+            "input": ["text", "image"],
+            "cost": {
+              "input": 5,
+              "output": 25,
+              "cacheRead": 0.5,
+              "cacheWrite": 6.25
+            },
+            "contextWindow": 200000,
+            "maxTokens": 8000
+          },
+          {
+            "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "name": "Claude Haiku 4.5 (Bedrock)",
+            "api": "bedrock-converse-stream",
+            "reasoning": false,
+            "input": ["text", "image"],
+            "cost": {
+              "input": 1,
+              "output": 5,
+              "cacheRead": 0.1,
+              "cacheWrite": 1.25
+            },
+            "contextWindow": 200000,
+            "maxTokens": 4096
+          }
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "load": {
+      "paths": [
+        "/home/node/.openclaw/plugins/ms-graph-query",
+        "/home/node/.openclaw/plugins/jira-query",
+        "/home/node/.openclaw/plugins/pod-delegate"
+      ]
+    },
+    "entries": {
+      "ms-graph-query": {
+        "enabled": true,
+        "config": {
+          "tenantId": __MSGRAPH_TENANT_ID_JSON__,
+          "clientId": __MSGRAPH_CLIENT_ID_JSON__,
+          "delegatedScope": "offline_access openid profile User.Read Calendars.ReadWrite Mail.ReadWrite Files.ReadWrite Sites.Read.All",
+          "graphBaseUrl": "https://graph.microsoft.com",
+          "tokenStorePath": "~/.openclaw/ms-graph-query-tokens.json",
+          "allowedPathPrefixes": [
+            "/v1.0/sites",
+            "/v1.0/drives",
+            "/v1.0/me"
+          ],
+          "allowedUserEmails": [],
+          "largeFileThreshold": 4194304
+        }
+      },
+      "jira-query": {
+        "enabled": true,
+        "config": {
+          "baseUrl": __JIRA_BASE_URL_JSON__,
+          "defaultProjectKeys": []
+        }
+      },
+      "pod-delegate": {
+        "enabled": true,
+        "config": {
+          "jobStorePath": "~/.openclaw/pod-delegate-jobs.json",
+          "defaultPollIntervalSeconds": 5,
+          "targets": __POD_DELEGATE_TARGETS_JSON__
+        }
+      }
+    }
+  },
+  "tools": {
+    "allow": [
+      "ms_graph_query",
+      "jira_query",
+      "pod_delegate"
+    ]
+  }
+}

@@ -31,7 +31,7 @@ log_error() {
 show_usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Syncs repo plugins/ and skills/ into all OpenClaw deployments in the namespace,"
+    echo "Syncs repo openclaw/plugins/ and openclaw/skills/ into all OpenClaw deployments in the namespace,"
     echo "restarts each deployment, and prints rollout status."
     echo ""
     echo "Options:"
@@ -74,13 +74,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ ! -d "plugins" ]; then
-    log_error "plugins directory not found in current working directory."
+if [ ! -d "openclaw/plugins" ]; then
+    log_error "openclaw/plugins directory not found in current working directory."
     exit 1
 fi
 
-if [ ! -d "skills" ]; then
-    log_error "skills directory not found in current working directory."
+if [ ! -d "openclaw/skills" ]; then
+    log_error "openclaw/skills directory not found in current working directory."
     exit 1
 fi
 
@@ -135,8 +135,8 @@ sync_deployment() {
     fi
 
     kubectl exec -n "$NAMESPACE" "$pod_name" -c main -- mkdir -p "$CONFIG_ROOT/plugins" "$CONFIG_ROOT/skills"
-    kubectl cp plugins/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/plugins" -c main
-    kubectl cp skills/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/skills" -c main
+    kubectl cp openclaw/plugins/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/plugins" -c main
+    kubectl cp openclaw/skills/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/skills" -c main
 
     kubectl rollout restart "deployment/$deployment" -n "$NAMESPACE"
 

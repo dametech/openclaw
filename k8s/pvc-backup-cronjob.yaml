@@ -1,8 +1,9 @@
 # ──────────────────────────────────────────────────────────────────────
-# OpenClaw PVC Backup — Kubernetes CronJob
+# OpenClaw PVC Backup — Kubernetes CronJob Dispatcher
 # ──────────────────────────────────────────────────────────────────────
-# Daily backup of ~/.openclaw/ config to S3.
-# Pure Python, no LLM or OpenClaw gateway dependency.
+# Daily backup of every OpenClaw PVC in the openclaw namespace to S3.
+# The dispatcher discovers PVCs labeled with app.kubernetes.io/instance
+# and creates one backup Job per PVC.
 #
 # Prerequisites:
 #
@@ -14,7 +15,7 @@
 #        --from-literal=AWS_REGION='ap-southeast-2' \
 #        --from-literal=S3_BUCKET='dame-openclaw-backup'
 #
-#   2. Create the backup script ConfigMap:
+#   2. Create the Python backup script ConfigMap:
 #      kubectl create configmap openclaw-backup-script \
 #        --namespace openclaw \
 #        --from-file=openclaw-backup-s3.py=scripts/openclaw-backup-s3.py
@@ -22,26 +23,91 @@
 #   3. Apply this manifest:
 #      kubectl apply -f k8s/pvc-backup-cronjob.yaml
 #
-# The PVC claim name (openclaw-data) must match your deployment.
-# Check with: kubectl get pvc -n openclaw
+# Notes:
+# - The dispatcher runs on the cluster; it does not depend on a local laptop.
+# - Each child Job writes to:
+#   s3://<bucket>/openclaw-backups/<cluster>/<instance>/<pvc>/<timestamp>.tar.gz
 # ──────────────────────────────────────────────────────────────────────
-apiVersion: batch/v1
-kind: CronJob
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: openclaw-pvc-backup
+  name: openclaw-pvc-backup-dispatcher
   namespace: openclaw
-  labels:
-    app.kubernetes.io/name: openclaw-pvc-backup
-    app.kubernetes.io/component: backup
-    app.kubernetes.io/part-of: openclaw
-spec:
-  schedule: "0 2 * * *"
-  timeZone: "UTC"
-  concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
-  jobTemplate:
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openclaw-pvc-backup-dispatcher
+  namespace: openclaw
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims", "configmaps", "secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openclaw-pvc-backup-dispatcher
+  namespace: openclaw
+subjects:
+  - kind: ServiceAccount
+    name: openclaw-pvc-backup-dispatcher
+    namespace: openclaw
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openclaw-pvc-backup-dispatcher
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-pvc-backup-dispatcher
+  namespace: openclaw
+data:
+  dispatch-backups.sh: |
+    #!/bin/sh
+    set -eu
+
+    NAMESPACE="${NAMESPACE:-openclaw}"
+    BACKUP_CLUSTER="${BACKUP_CLUSTER:-au01-0}"
+
+    pvc_rows="$(kubectl get pvc -n "$NAMESPACE" -o go-template='{{range .items}}{{printf "%s\t%s\n" .metadata.name (index .metadata.labels "app.kubernetes.io/instance")}}{{end}}')"
+
+    if [ -z "$pvc_rows" ]; then
+      echo "No PVCs found in namespace $NAMESPACE"
+      exit 0
+    fi
+
+    echo "$pvc_rows" | while IFS="$(printf '\t')" read -r pvc_name instance_name; do
+      if [ -z "${pvc_name:-}" ] || [ -z "${instance_name:-}" ]; then
+        continue
+      fi
+
+      safe_instance="$(printf '%s' "$instance_name" | tr -cs 'a-zA-Z0-9-' '-' | tr '[:upper:]' '[:lower:]' | sed 's/^-//; s/-$//' | cut -c1-20)"
+      if [ -z "$safe_instance" ]; then
+        safe_instance="unknown"
+      fi
+
+      job_name="openclaw-pvc-backup-${safe_instance}-$(date -u +%s)"
+      echo "Creating backup job $job_name for PVC $pvc_name (instance $instance_name)"
+
+      cat <<EOF | kubectl apply -f -
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: ${job_name}
+      namespace: ${NAMESPACE}
+      labels:
+        app.kubernetes.io/name: openclaw-pvc-backup
+        app.kubernetes.io/component: backup
+        app.kubernetes.io/part-of: openclaw
+        app.kubernetes.io/instance: ${instance_name}
+        backup.openclaw.ai/pvc: ${pvc_name}
     spec:
+      ttlSecondsAfterFinished: 300
       backoffLimit: 2
       activeDeadlineSeconds: 1800
       template:
@@ -49,7 +115,10 @@ spec:
           labels:
             app.kubernetes.io/name: openclaw-pvc-backup
             app.kubernetes.io/component: backup
+            app.kubernetes.io/instance: ${instance_name}
+            backup.openclaw.ai/pvc: ${pvc_name}
         spec:
+          restartPolicy: OnFailure
           containers:
             - name: backup
               image: python:3.11-slim
@@ -60,6 +129,12 @@ spec:
               env:
                 - name: HOME
                   value: /home/node
+                - name: BACKUP_CLUSTER
+                  value: ${BACKUP_CLUSTER}
+                - name: BACKUP_INSTANCE
+                  value: ${instance_name}
+                - name: BACKUP_PVC
+                  value: ${pvc_name}
               volumeMounts:
                 - name: data
                   mountPath: /home/node/.openclaw
@@ -77,8 +152,62 @@ spec:
           volumes:
             - name: data
               persistentVolumeClaim:
-                claimName: openclaw-data
+                claimName: ${pvc_name}
             - name: backup-script
               configMap:
                 name: openclaw-backup-script
+    EOF
+    done
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openclaw-pvc-backup-dispatcher
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw-pvc-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: openclaw
+spec:
+  schedule: "0 2 * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 0
+  failedJobsHistoryLimit: 0
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: openclaw-pvc-backup
+            app.kubernetes.io/component: backup
+        spec:
+          serviceAccountName: openclaw-pvc-backup-dispatcher
           restartPolicy: OnFailure
+          containers:
+            - name: dispatcher
+              image: bitnami/kubectl:latest
+              command: ["/bin/sh", "/scripts/dispatch-backups.sh"]
+              env:
+                - name: NAMESPACE
+                  value: openclaw
+                - name: BACKUP_CLUSTER
+                  value: au01-0
+              volumeMounts:
+                - name: dispatcher-script
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+          volumes:
+            - name: dispatcher-script
+              configMap:
+                name: openclaw-pvc-backup-dispatcher
+                defaultMode: 0555

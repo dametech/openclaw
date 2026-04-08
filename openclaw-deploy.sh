@@ -10,10 +10,14 @@ set -e
 KUBECONFIG_PATH="${HOME}/.kube/au01-0.yaml"
 NAMESPACE="openclaw"
 RELEASE_NAME="openclaw"
+EXISTING_PVC=""
 HELM_REPO="openclaw-community"
 HELM_REPO_URL="https://serhanekicii.github.io/openclaw-helm"
 SECRET_NAME="${RELEASE_NAME}-env-secret"
 VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
+RENDERED_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw.json"
+OPENCLAW_CONFIG_TEMPLATE="openclaw/openclaw.json"
+GATEWAY_AUTH_TOKEN=""
 OLLAMA_EMBEDDINGS_MODEL="${OLLAMA_EMBEDDINGS_MODEL:-nomic-embed-text}"
 
 # Colors for output
@@ -33,6 +37,47 @@ log_warn() {
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+show_usage() {
+    cat <<EOF
+Usage: $0 [OPTIONS]
+
+Deploys OpenClaw to Kubernetes.
+
+Options:
+  -r, --release-name NAME   Release/instance name to deploy
+  -p, --existing-pvc NAME   Use an existing PVC for persistence.data
+  -h, --help                Show this help
+
+Examples:
+  $0
+  $0 --release-name oc-sm
+  $0 --release-name oc-sm-restore --existing-pvc oc-sm-restore-data
+EOF
+
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -r|--release-name)
+            RELEASE_NAME="$2"
+            shift 2
+            ;;
+        -p|--existing-pvc)
+            EXISTING_PVC="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            log_error "Unknown option: $1"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
 
 # Check prerequisites
 check_prerequisites() {
@@ -76,13 +121,24 @@ check_cluster_disk_pressure() {
 # Prompt for API key
 get_release_name() {
     local input_name
+    local use_existing_pvc
+    local release_name_from_args=false
 
-    echo ""
-    echo -n "Enter instance name [openclaw]: "
-    read -r input_name
+    if [ -n "$RELEASE_NAME" ] && [ "$RELEASE_NAME" != "openclaw" ]; then
+        release_name_from_args=true
+        log_info "Using instance name from arguments: $RELEASE_NAME"
+    else
+        if [ -n "$EXISTING_PVC" ]; then
+            RELEASE_NAME="$EXISTING_PVC"
+        fi
 
-    if [ -n "$input_name" ]; then
-        RELEASE_NAME="$input_name"
+        echo ""
+        echo -n "Enter instance name [$RELEASE_NAME]: "
+        read -r input_name
+
+        if [ -n "$input_name" ]; then
+            RELEASE_NAME="$input_name"
+        fi
     fi
 
     if [ -z "$RELEASE_NAME" ]; then
@@ -92,6 +148,147 @@ get_release_name() {
 
     SECRET_NAME="${RELEASE_NAME}-env-secret"
     VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
+    RENDERED_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw.json"
+
+    if [ -z "$EXISTING_PVC" ]; then
+        echo -n "Use an existing PVC for data? [y/N]: "
+        read -r use_existing_pvc
+
+        if [[ "${use_existing_pvc:-N}" =~ ^[Yy]$ ]]; then
+            echo -n "Enter existing PVC name: "
+            read -r EXISTING_PVC
+
+            if [ -z "$EXISTING_PVC" ]; then
+                log_error "Existing PVC name cannot be empty when enabled."
+                exit 1
+            fi
+
+            if [ "$release_name_from_args" = false ] && [ "$RELEASE_NAME" = "openclaw" ]; then
+                RELEASE_NAME="$EXISTING_PVC"
+                SECRET_NAME="${RELEASE_NAME}-env-secret"
+                VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
+                RENDERED_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw.json"
+                log_info "Defaulting release name to existing PVC name: $RELEASE_NAME"
+            fi
+        fi
+    fi
+}
+
+check_existing_pvc() {
+    if [ -z "$EXISTING_PVC" ]; then
+        return
+    fi
+
+    log_info "Using existing PVC for data persistence: $EXISTING_PVC"
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    if ! kubectl get pvc "$EXISTING_PVC" -n "$NAMESPACE" >/dev/null 2>&1; then
+        log_error "Existing PVC $EXISTING_PVC not found in namespace $NAMESPACE"
+        exit 1
+    fi
+}
+
+delete_release_configmaps() {
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-config" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-scripts" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-startup-script" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-ms-graph-plugin" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-jira-plugin" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-pod-delegate-plugin" --ignore-not-found
+}
+
+helm_release_exists() {
+    export KUBECONFIG="$KUBECONFIG_PATH"
+    helm status "$RELEASE_NAME" -n "$NAMESPACE" >/dev/null 2>&1
+}
+
+delete_existing_release_pvcs() {
+    local pvc_names
+    local confirm_delete
+    local pvc_name
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    pvc_names=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
+
+    if [ -z "$pvc_names" ]; then
+        return
+    fi
+
+    log_warn "Existing PersistentVolumeClaim(s) found for release '$RELEASE_NAME':"
+    echo "$pvc_names"
+    log_warn "These PVCs will be deleted before deployment continues."
+    echo -n "Delete these PVCs and continue? [Y/n]: "
+    read -r confirm_delete
+
+    if [[ "${confirm_delete:-Y}" =~ ^[Nn]$ ]]; then
+        log_error "Deployment cancelled because existing PVCs were not approved for deletion."
+        exit 1
+    fi
+
+    if helm_release_exists; then
+        log_warn "Existing Helm release found for '$RELEASE_NAME'. Uninstalling before PVC deletion..."
+        helm uninstall "$RELEASE_NAME" -n "$NAMESPACE"
+        kubectl wait --for=delete pod -l "app.kubernetes.io/instance=$RELEASE_NAME" -n "$NAMESPACE" --timeout=180s || true
+    fi
+
+    delete_release_configmaps
+
+    kubectl delete -n "$NAMESPACE" $pvc_names
+
+    for pvc_name in $pvc_names; do
+        kubectl wait --for=delete "$pvc_name" -n "$NAMESPACE" --timeout=180s || true
+    done
+}
+
+validate_generated_config() {
+    log_info "Validating generated openclaw.json..."
+
+    python3 - <<PY
+from pathlib import Path
+import json
+
+rendered_config_path = Path(${RENDERED_CONFIG_JSON@Q})
+json.loads(Path(rendered_config_path).read_text())
+print(rendered_config_path)
+PY
+}
+
+render_openclaw_config() {
+    local pod_delegate_targets_json="$1"
+
+    log_info "Rendering openclaw.json from template..."
+
+    python3 - <<PY
+from pathlib import Path
+import json
+import re
+
+template_path = Path(${OPENCLAW_CONFIG_TEMPLATE@Q})
+rendered_config_path = Path(${RENDERED_CONFIG_JSON@Q})
+template = template_path.read_text()
+pod_delegate_targets_json = ${pod_delegate_targets_json@Q}
+json.loads(pod_delegate_targets_json)
+replacements = {
+    "__GATEWAY_AUTH_TOKEN_JSON__": json.dumps(${GATEWAY_AUTH_TOKEN@Q}),
+    "__MSGRAPH_TENANT_ID_JSON__": json.dumps(${MSGRAPH_TENANT_ID@Q}),
+    "__MSGRAPH_CLIENT_ID_JSON__": json.dumps(${MSGRAPH_CLIENT_ID@Q}),
+    "__JIRA_BASE_URL_JSON__": json.dumps(${JIRA_BASE_URL@Q}),
+    "__OLLAMA_EMBEDDINGS_MODEL_JSON__": json.dumps(${OLLAMA_EMBEDDINGS_MODEL@Q}),
+    "__POD_DELEGATE_TARGETS_JSON__": pod_delegate_targets_json,
+}
+rendered = template
+for placeholder, value in replacements.items():
+    rendered = rendered.replace(placeholder, value)
+leftovers = sorted(set(re.findall(r"__[A-Z0-9_]+__", rendered)))
+if leftovers:
+    raise SystemExit(f"Unrendered placeholders remain: {leftovers}")
+json.loads(rendered)
+rendered_config_path.write_text(rendered + "\n")
+PY
 }
 
 # Prompt for AWS Bedrock credentials
@@ -231,18 +428,38 @@ EOF
 create_values() {
     log_info "Creating Helm values file..."
 
-    local memory_search_block
-    memory_search_block=$(cat <<EOF
-,
-                "memorySearch": {
-                  "provider": "ollama",
-                  "model": "${OLLAMA_EMBEDDINGS_MODEL}",
-                  "remote": {
-                    "baseUrl": "http://ollama-embeddings.openclaw.svc.cluster.local:11434"
-                  }
-                }
+    local persistence_data_block
+    local pod_delegate_targets_json
+    pod_delegate_targets_json="${POD_DELEGATE_TARGETS_JSON:-}"
+    if [ -z "$pod_delegate_targets_json" ]; then
+        pod_delegate_targets_json='{}'
+    fi
+
+    render_openclaw_config "$pod_delegate_targets_json"
+
+    if [ -n "$EXISTING_PVC" ]; then
+        persistence_data_block=$(cat <<EOF
+    data:
+      enabled: false
+    restored-data:
+      enabled: true
+      type: persistentVolumeClaim
+      existingClaim: $EXISTING_PVC
+      globalMounts:
+        - path: /home/node/.openclaw
 EOF
 )
+    else
+        persistence_data_block=$(cat <<EOF
+    data:
+      enabled: true
+      type: persistentVolumeClaim
+      accessMode: ReadWriteOnce
+      size: 5Gi
+      storageClass: talos-hostpath
+EOF
+)
+    fi
 
     cat > "$VALUES_FILE" <<EOF
 fullnameOverride: $RELEASE_NAME
@@ -250,6 +467,10 @@ fullnameOverride: $RELEASE_NAME
 app-template:
   controllers:
     main:
+      initContainers:
+        init-config:
+          env:
+            CONFIG_MODE: replace
       containers:
         main:
           command:
@@ -275,188 +496,35 @@ app-template:
     config:
       data:
         openclaw.json: |
-          {
-            "gateway": {
-              "mode": "local",
-              "controlUi": {
-                "allowedOrigins": [
-                  "http://127.0.0.1:18789",
-                  "http://localhost:18789"
-                ]
-              },
-              "http": {
-                "endpoints": {
-                  "responses": {
-                    "enabled": true
-                  }
-                }
-              }
-            },
-            "agents": {
-              "defaults": {
-                "workspace": "/home/node/.openclaw/workspace",
-                "model": {
-                  "primary": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
-                },
-                "models": {
-                  "amazon-bedrock/global.anthropic.claude-sonnet-4-6": {
-                    "params": {
-                      "cacheRetention": "ephemeral"
-                    }
-                  },
-                  "amazon-bedrock/global.anthropic.claude-opus-4-6-v1": {
-                    "params": {
-                      "cacheRetention": "ephemeral"
-                    }
-                  },
-                  "amazon-bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0": {
-                    "params": {
-                      "cacheRetention": "none"
-                    }
-                  }
-                },
-                "userTimezone": "Australia/Brisbane",
-                "timeoutSeconds": 600,
-                "maxConcurrent": 1${memory_search_block}
-              },
-              "list": [
-                {
-                  "id": "main",
-                  "default": true,
-                  "identity": {
-                    "name": "OpenClaw",
-                    "emoji": "🦞"
-                  },
-                  "model": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
-                }
-              ]
-            },
-            "models": {
-              "providers": {
-                "amazon-bedrock": {
-                  "baseUrl": "https://bedrock-runtime.ap-southeast-2.amazonaws.com",
-                  "apiKey": "aws-sdk",
-                  "api": "bedrock-converse-stream",
-                  "models": [
-                    {
-                      "id": "global.anthropic.claude-sonnet-4-6",
-                      "name": "Claude Sonnet 4.6 (Bedrock)",
-                      "api": "bedrock-converse-stream",
-                      "reasoning": true,
-                      "input": ["text", "image"],
-                      "cost": {
-                        "input": 3,
-                        "output": 15,
-                        "cacheRead": 0.3,
-                        "cacheWrite": 3.75
-                      },
-                      "contextWindow": 200000,
-                      "maxTokens": 8000
-                    },
-                    {
-                      "id": "global.anthropic.claude-opus-4-6-v1",
-                      "name": "Claude Opus 4.6 (Bedrock)",
-                      "api": "bedrock-converse-stream",
-                      "reasoning": true,
-                      "input": ["text", "image"],
-                      "cost": {
-                        "input": 5,
-                        "output": 25,
-                        "cacheRead": 0.5,
-                        "cacheWrite": 6.25
-                      },
-                      "contextWindow": 200000,
-                      "maxTokens": 8000
-                    },
-                    {
-                      "id": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-                      "name": "Claude Haiku 4.5 (Bedrock)",
-                      "api": "bedrock-converse-stream",
-                      "reasoning": false,
-                      "input": ["text", "image"],
-                      "cost": {
-                        "input": 1,
-                        "output": 5,
-                        "cacheRead": 0.1,
-                        "cacheWrite": 1.25
-                      },
-                      "contextWindow": 200000,
-                      "maxTokens": 4096
-                    }
-                  ]
-                }
-              },
-              "bedrockDiscovery": {
-                "enabled": false,
-                "region": "ap-southeast-2",
-                "providerFilter": ["anthropic", "amazon"],
-                "refreshInterval": 3600,
-                "defaultContextWindow": 32000,
-                "defaultMaxTokens": 4096
-              }
-            },
-            "plugins": {
-              "load": {
-                "paths": [
-                  "/home/node/.openclaw/plugins/ms-graph-query",
-                  "/home/node/.openclaw/plugins/jira-query",
-                  "/home/node/.openclaw/plugins/pod-delegate"
-                ]
-              },
-              "entries": {
-                "ms-graph-query": {
-                  "enabled": true,
-                  "config": {
-                    "tenantId": "${MSGRAPH_TENANT_ID:-}",
-                    "clientId": "${MSGRAPH_CLIENT_ID:-}",
-                    "delegatedScope": "offline_access openid profile User.Read Calendars.ReadWrite Mail.ReadWrite Files.ReadWrite Sites.Read.All",
-                    "graphBaseUrl": "https://graph.microsoft.com",
-                    "tokenStorePath": "~/.openclaw/ms-graph-query-tokens.json",
-                    "allowedPathPrefixes": [
-                      "/v1.0/sites",
-                      "/v1.0/drives",
-                      "/v1.0/me"
-                    ],
-                    "allowedUserEmails": [],
-                    "largeFileThreshold": 4194304
-                  }
-                },
-                "jira-query": {
-                  "enabled": true,
-                  "config": {
-                    "baseUrl": "${JIRA_BASE_URL:-}",
-                    "defaultProjectKeys": []
-                  }
-                },
-                "pod-delegate": {
-                  "enabled": true,
-                  "config": {
-                    "jobStorePath": "~/.openclaw/pod-delegate-jobs.json",
-                    "defaultPollIntervalSeconds": 5,
-                    "targets": ${POD_DELEGATE_TARGETS_JSON:-{}}
-                  }
-                }
-              }
-            }
-          }
+$(sed 's/^/          /' "$RENDERED_CONFIG_JSON")
     ms-graph-plugin:
       data:
+        package.json: |
+$(sed 's/^/          /' openclaw/plugins/ms-graph-query/package.json)
         openclaw.plugin.json: |
-$(sed 's/^/          /' plugins/ms-graph-query/openclaw.plugin.json)
+$(sed 's/^/          /' openclaw/plugins/ms-graph-query/openclaw.plugin.json)
         index.js: |
-$(sed 's/^/          /' plugins/ms-graph-query/index.js)
+$(sed 's/^/          /' openclaw/plugins/ms-graph-query/index.js)
     jira-plugin:
       data:
+        package.json: |
+$(sed 's/^/          /' openclaw/plugins/jira-query/package.json)
         openclaw.plugin.json: |
-$(sed 's/^/          /' plugins/jira-query/openclaw.plugin.json)
+$(sed 's/^/          /' openclaw/plugins/jira-query/openclaw.plugin.json)
         index.js: |
-$(sed 's/^/          /' plugins/jira-query/index.js)
+$(sed 's/^/          /' openclaw/plugins/jira-query/index.js)
     pod-delegate-plugin:
       data:
+        package.json: |
+$(sed 's/^/          /' openclaw/plugins/pod-delegate/package.json)
         openclaw.plugin.json: |
-$(sed 's/^/          /' plugins/pod-delegate/openclaw.plugin.json)
+$(sed 's/^/          /' openclaw/plugins/pod-delegate/openclaw.plugin.json)
         index.js: |
-$(sed 's/^/          /' plugins/pod-delegate/index.js)
+$(sed 's/^/          /' openclaw/plugins/pod-delegate/index.js)
+    bootstrap-doc:
+      data:
+        BOOTSTRAP.md: |
+$(sed 's/^/          /' openclaw/workspace/BOOTSTRAP.md)
     startup-script:
       data:
         start-openclaw.sh: |
@@ -464,90 +532,35 @@ $(sed 's/^/          /' plugins/pod-delegate/index.js)
           set -eu
 
           BOOTSTRAP_FILE="/home/node/.openclaw/workspace/BOOTSTRAP.md"
-          MS_GRAPH_BOOTSTRAP_MARKER="## Microsoft Graph Login"
-          JIRA_BOOTSTRAP_MARKER="## Jira Login"
-          POD_DELEGATE_BOOTSTRAP_MARKER="## Inter-Pod Delegation"
+          BOOTSTRAP_SOURCE="/bootstrap-source/BOOTSTRAP.md"
+          BOOTSTRAP_VERSION_FILE="/home/node/.openclaw/workspace/.bootstrap-version"
 
           mkdir -p /home/node/.openclaw/workspace
           mkdir -p /home/node/.openclaw/plugins/ms-graph-query
           mkdir -p /home/node/.openclaw/plugins/jira-query
           mkdir -p /home/node/.openclaw/plugins/pod-delegate
+          cp /plugin-source-ms-graph/package.json /home/node/.openclaw/plugins/ms-graph-query/package.json
           cp /plugin-source-ms-graph/openclaw.plugin.json /home/node/.openclaw/plugins/ms-graph-query/openclaw.plugin.json
           cp /plugin-source-ms-graph/index.js /home/node/.openclaw/plugins/ms-graph-query/index.js
+          cp /plugin-source-jira/package.json /home/node/.openclaw/plugins/jira-query/package.json
           cp /plugin-source-jira/openclaw.plugin.json /home/node/.openclaw/plugins/jira-query/openclaw.plugin.json
           cp /plugin-source-jira/index.js /home/node/.openclaw/plugins/jira-query/index.js
+          cp /plugin-source-pod-delegate/package.json /home/node/.openclaw/plugins/pod-delegate/package.json
           cp /plugin-source-pod-delegate/openclaw.plugin.json /home/node/.openclaw/plugins/pod-delegate/openclaw.plugin.json
           cp /plugin-source-pod-delegate/index.js /home/node/.openclaw/plugins/pod-delegate/index.js
-          if [ ! -f "\$BOOTSTRAP_FILE" ]; then
-            touch "\$BOOTSTRAP_FILE"
-          fi
 
-          if ! grep -qF "\$MS_GRAPH_BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
-            cat >> "\$BOOTSTRAP_FILE" <<'BOOTSTRAP_EOF'
-
-          ## Microsoft Graph Login
-
-          This pod includes the \`ms_graph_query\` plugin for Microsoft Graph access.
-
-          Before using Microsoft Graph features, complete delegated device login:
-
-          1. Run \`ms_graph_query\` with \`action="login_start"\`.
-          2. Open the returned verification URL and enter the provided user code.
-          3. Run \`ms_graph_query\` with \`action="login_poll"\` until authentication succeeds.
-          4. Optionally run \`ms_graph_query\` with \`action="login_status"\` to confirm the token is stored.
-
-          After login succeeds, the plugin can be used for Outlook, OneDrive, and SharePoint operations permitted by the configured Graph scopes.
-          BOOTSTRAP_EOF
-          fi
-
-          if ! grep -qF "\$JIRA_BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
-            cat >> "\$BOOTSTRAP_FILE" <<'BOOTSTRAP_EOF'
-
-          ## Jira Login
-
-          This pod includes the \`jira_query\` plugin for Jira access.
-
-          Before using Jira features, get a Jira API token and configure credentials once for this pod:
-
-          1. Create an Atlassian API token for your Jira account.
-          2. Run \`jira_query\` with \`action="login_setup"\`.
-          3. Provide \`email\` and \`apiToken\`. The default Jira URL for this pod is \`${JIRA_BASE_URL:-}\`.
-          4. Optionally include \`defaultProjectKeys\` to scope default ticket lookups.
-
-          After setup succeeds, the plugin can query Jira and perform Jira write actions for the configured account.
-          BOOTSTRAP_EOF
-          fi
-
-          if ! grep -qF "\$POD_DELEGATE_BOOTSTRAP_MARKER" "\$BOOTSTRAP_FILE"; then
-            cat >> "\$BOOTSTRAP_FILE" <<'BOOTSTRAP_EOF'
-
-          ## Inter-Pod Delegation
-
-          This pod includes the \`pod_delegate\` plugin for asynchronous delegation to other configured OpenClaw pods.
-          This pod may start with no configured delegate targets.
-
-          It delegates through the documented remote gateway OpenResponses API at \`POST /v1/responses\`.
-          Configured target gateways must expose this endpoint and enable \`gateway.http.endpoints.responses.enabled\`.
-          To configure delegation after deployment, the operator only needs the delegate pod/service name and delegate pod gateway token.
-          The plugin derives the in-cluster service URL from the target name.
-
-          1. Run \`pod_delegate\` with \`action="delegate_targets"\` to see available targets.
-          2. Run \`pod_delegate\` with \`action="delegate_start"\` to submit work and get a \`jobId\`.
-          3. Run \`pod_delegate\` with \`action="delegate_status"\` to check the local async job state.
-          4. Run \`pod_delegate\` with \`action="delegate_result"\` to fetch the final reply when complete.
-          BOOTSTRAP_EOF
+          DEPLOYED_BOOTSTRAP_HASH="$(cat "\$BOOTSTRAP_VERSION_FILE" 2>/dev/null || true)"
+          BOOTSTRAP_SOURCE_HASH="$(sha256sum "\$BOOTSTRAP_SOURCE" | awk '{print $1}')"
+          if [ ! -f "\$BOOTSTRAP_FILE" ] || [ "\$BOOTSTRAP_SOURCE_HASH" != "\$DEPLOYED_BOOTSTRAP_HASH" ]; then
+            cp "\$BOOTSTRAP_SOURCE" "\$BOOTSTRAP_FILE"
+            printf '%s\n' "\$BOOTSTRAP_SOURCE_HASH" > "\$BOOTSTRAP_VERSION_FILE"
           fi
 
           exec openclaw gateway --bind lan --port 18789
 
   # Use the Talos hostpath storage class
   persistence:
-    data:
-      enabled: true
-      type: persistentVolumeClaim
-      accessMode: ReadWriteOnce
-      size: 5Gi
-      storageClass: talos-hostpath
+${persistence_data_block}
     ms-graph-plugin:
       enabled: true
       type: configMap
@@ -569,6 +582,13 @@ $(sed 's/^/          /' plugins/pod-delegate/index.js)
       globalMounts:
         - path: /plugin-source-pod-delegate
           readOnly: true
+    bootstrap-doc:
+      enabled: true
+      type: configMap
+      name: '{{ .Release.Name }}-bootstrap-doc'
+      globalMounts:
+        - path: /bootstrap-source
+          readOnly: true
     startup-script:
       enabled: true
       type: configMap
@@ -577,6 +597,8 @@ $(sed 's/^/          /' plugins/pod-delegate/index.js)
         - path: /startup-scripts
           readOnly: true
 EOF
+
+    validate_generated_config
 }
 
 show_deploy_diagnostics() {
@@ -600,7 +622,7 @@ deploy_openclaw() {
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
-    if helm list -n "$NAMESPACE" | grep -q "$RELEASE_NAME"; then
+    if helm_release_exists; then
         log_warn "OpenClaw is already installed. Upgrading..."
         if ! helm upgrade "$RELEASE_NAME" "$HELM_REPO/openclaw" \
             --namespace "$NAMESPACE" \
@@ -622,6 +644,56 @@ deploy_openclaw() {
     fi
 }
 
+ensure_gateway_auth_token() {
+    local current_token
+
+    log_info "Preserving existing gateway token or generating a new one..."
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    current_token=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | python3 -c 'import json,sys; data=sys.stdin.read().strip(); print(json.loads(data).get("gateway", {}).get("auth", {}).get("token", "") if data else "")' || true)
+
+    if [ -n "$current_token" ]; then
+        GATEWAY_AUTH_TOKEN="$current_token"
+        return
+    fi
+
+    GATEWAY_AUTH_TOKEN=$(python3 - <<'PY'
+import secrets
+
+print(secrets.token_urlsafe(32))
+PY
+)
+}
+
+apply_rendered_openclaw_config() {
+    local pod_name
+    local current_hash
+    local rendered_hash
+
+    log_info "Overwriting /home/node/.openclaw/openclaw.json in pod with rendered config..."
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/instance=$RELEASE_NAME" -n "$NAMESPACE" --timeout=300s
+    pod_name=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o jsonpath='{.items[0].metadata.name}')
+
+    if [ -z "$pod_name" ]; then
+        log_error "Could not determine pod name for release '$RELEASE_NAME'"
+        exit 1
+    fi
+
+    current_hash=$(kubectl exec -n "$NAMESPACE" "$pod_name" -c main -- sh -c 'sha256sum /home/node/.openclaw/openclaw.json 2>/dev/null | awk '\''{print $1}'\''' || true)
+    rendered_hash=$(sha256sum "$RENDERED_CONFIG_JSON" | awk '{print $1}')
+
+    if [ -n "$current_hash" ] && [ "$current_hash" = "$rendered_hash" ]; then
+        log_info "Rendered openclaw.json already matches pod config. Skipping overwrite."
+        return
+    fi
+
+    kubectl cp "$RENDERED_CONFIG_JSON" "$NAMESPACE/$pod_name:/home/node/.openclaw/openclaw.json" -c main
+}
+
 # Get gateway token
 get_gateway_token() {
     log_info "Retrieving gateway token..."
@@ -633,7 +705,7 @@ get_gateway_token() {
 
     sleep 5
 
-    GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | grep -o '"token": "[^"]*"' | cut -d'"' -f4)
+    GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | python3 -c 'import json,sys; data=sys.stdin.read().strip(); print(json.loads(data).get("gateway", {}).get("auth", {}).get("token", "") if data else "")')
 
     if [ -n "$GATEWAY_TOKEN" ]; then
         echo ""
@@ -672,14 +744,18 @@ main() {
     check_prerequisites
     check_cluster_disk_pressure
     get_release_name
+    check_existing_pvc
     get_bedrock_credentials
     get_msgraph_config
     get_jira_config
     setup_helm_repo
     create_namespace
+    ensure_gateway_auth_token
+    delete_existing_release_pvcs
     create_secret
     create_values
     deploy_openclaw
+    apply_rendered_openclaw_config
     get_gateway_token
     show_access_info
 }

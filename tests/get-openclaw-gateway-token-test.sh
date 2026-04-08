@@ -20,8 +20,8 @@ assert_contains 'echo -n "Enter instance name [openclaw]: "'
 assert_contains 'RELEASE_NAME="$input_name"'
 assert_contains 'kubectl wait --for=condition=ready pod -l "app.kubernetes.io/instance=$RELEASE_NAME" -n "$NAMESPACE" --timeout=300s || true'
 assert_contains 'kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json'
-assert_contains 'grep -o '\''"token": "[^"]*"'\'''
-assert_contains 'cut -d'\''"'\'' -f4'
+assert_contains 'python3 -c '
+assert_contains 'print(json.loads(data).get("gateway", {}).get("auth", {}).get("token", "") if data else "")'
 assert_contains 'printf "%s\n" "$GATEWAY_TOKEN"'
 
 if grep -Fq -- 'Gateway Token:' "$SCRIPT"; then

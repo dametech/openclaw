@@ -84,6 +84,7 @@ delete_pvc() {
     log_info "Deleting PersistentVolumeClaim(s) for release '$RELEASE_NAME'..."
     export KUBECONFIG="$KUBECONFIG_PATH"
     local pvc_names
+    local pvc_name
     pvc_names=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
 
     if [ -z "$pvc_names" ]; then
@@ -92,6 +93,23 @@ delete_pvc() {
     fi
 
     kubectl delete -n "$NAMESPACE" $pvc_names
+
+    for pvc_name in $pvc_names; do
+        kubectl wait --for=delete "$pvc_name" -n "$NAMESPACE" --timeout=180s || true
+    done
+}
+
+delete_configmaps() {
+    log_info "Deleting ConfigMap(s) for release '$RELEASE_NAME'..."
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-config" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-scripts" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-startup-script" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-ms-graph-plugin" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-jira-plugin" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-pod-delegate-plugin" --ignore-not-found
 }
 
 # Stop port-forward processes
@@ -110,6 +128,7 @@ main() {
     check_deployment
     stop_port_forward
     delete_release
+    delete_configmaps
     delete_pvc
 
     echo ""

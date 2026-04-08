@@ -12,7 +12,7 @@ Usage:
 
 Creates a tar.gz of ~/.openclaw/ config files (excluding tools, bin, go,
 node_modules, .tool-versions, and large reproducible dirs) and uploads
-to s3://<bucket>/openclaw-backups/au01-0/<timestamp>.tar.gz
+to s3://<bucket>/openclaw-backups/<cluster>/<instance>/<pvc>/<timestamp>.tar.gz
 """
 
 import datetime
@@ -27,7 +27,10 @@ import urllib.error
 
 # ── Config ─────────────────────────────────────────────────────────
 OPENCLAW_DIR = os.path.expanduser("~/.openclaw")
-BACKUP_PREFIX = "openclaw-backups/au01-0"
+BACKUP_CLUSTER = os.environ.get("BACKUP_CLUSTER", "au01-0")
+BACKUP_INSTANCE = os.environ.get("BACKUP_INSTANCE", "unknown-instance")
+BACKUP_PVC = os.environ.get("BACKUP_PVC", "openclaw-data")
+BACKUP_PREFIX = f"openclaw-backups/{BACKUP_CLUSTER}/{BACKUP_INSTANCE}/{BACKUP_PVC}"
 
 # Top-level directories to EXCLUDE (reproducible or large)
 EXCLUDE_DIRS = {

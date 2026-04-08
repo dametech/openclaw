@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-PLUGIN_JSON="plugins/pod-delegate/openclaw.plugin.json"
-PLUGIN_JS="plugins/pod-delegate/index.js"
+PLUGIN_JSON="openclaw/plugins/pod-delegate/openclaw.plugin.json"
+PLUGIN_JS="openclaw/plugins/pod-delegate/index.js"
 
 if [ ! -f "$PLUGIN_JSON" ]; then
     echo "missing expected file: $PLUGIN_JSON" >&2
@@ -23,8 +23,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const repoRoot = process.cwd();
-const pluginJsonPath = path.join(repoRoot, "plugins/pod-delegate/openclaw.plugin.json");
-const pluginJsPath = path.join(repoRoot, "plugins/pod-delegate/index.js");
+const pluginJsonPath = path.join(repoRoot, "openclaw/plugins/pod-delegate/openclaw.plugin.json");
+const pluginJsPath = path.join(repoRoot, "openclaw/plugins/pod-delegate/index.js");
+const bootstrapPath = path.join(repoRoot, "openclaw/workspace/BOOTSTRAP.md");
 
 function deferred() {
   let resolve;
@@ -58,11 +59,11 @@ assert.equal(pluginJson.configSchema.properties.defaultPollIntervalSeconds.defau
 assert.equal(pluginJson.configSchema.properties.targets.additionalProperties.required.length, 1);
 assert.deepEqual(pluginJson.configSchema.properties.targets.additionalProperties.required, ["token"]);
 
-const deployScript = await readFile(path.join(repoRoot, "openclaw-deploy.sh"), "utf8");
+const bootstrapDoc = await readFile(bootstrapPath, "utf8");
 const deployEnvExample = await readFile(path.join(repoRoot, "deploy.env.example"), "utf8");
-assert.match(deployScript, /This pod may start with no configured delegate targets\./);
-assert.match(deployScript, /delegate pod\/service name and delegate pod gateway token/);
-assert.match(deployScript, /The plugin derives the in-cluster service URL from the target name\./);
+assert.match(bootstrapDoc, /This pod may start with no configured delegate targets\./);
+assert.match(bootstrapDoc, /delegate pod\/service name and delegate pod gateway token/);
+assert.match(bootstrapDoc, /The plugin derives the in-cluster service URL from the target name\./);
 assert.match(deployEnvExample, /POD_DELEGATE_TARGETS_JSON='\{"openclaw-b":\{"token":"replace-with-gateway-token"\}\}'/);
 
 const pluginModule = await import(pathToFileURL(pluginJsPath).href);

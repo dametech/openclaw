@@ -72,6 +72,6 @@ kubectl wait --for=condition=ready pod -l "app.kubernetes.io/instance=$RELEASE_N
 
 sleep 5
 
-GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | grep -o '"token": "[^"]*"' | cut -d'"' -f4)
+GATEWAY_TOKEN=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null | python3 -c 'import json,sys; data=sys.stdin.read().strip(); print(json.loads(data).get("gateway", {}).get("auth", {}).get("token", "") if data else "")')
 
 printf "%s\n" "$GATEWAY_TOKEN"

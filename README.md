@@ -27,14 +27,38 @@ Before deploying OpenClaw, ensure you have:
 ./openclaw-deploy.sh
 ```
 
+You can also deploy non-interactively with an explicit release name:
+
+```bash
+./openclaw-deploy.sh --release-name oc-sm
+```
+
 This script will:
 - Check prerequisites
+- Check for existing PVCs owned by the target release and require confirmation before deleting them
+- Uninstall the existing release and delete release-owned ConfigMaps before reusing the same release name
 - Prompt for AWS Bedrock credentials (or use `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN`)
 - Set up the Helm repository
 - Create the `openclaw` namespace
 - Store your Bedrock credentials securely in a Kubernetes secret
 - Deploy OpenClaw using Helm
+- Validate the rendered `openclaw.json` locally before Helm runs
 - Display the gateway token for authentication
+
+To deploy a new OpenClaw instance against an existing PVC instead of creating a new data claim:
+
+```bash
+./openclaw-deploy.sh --release-name oc-sm-restore --existing-pvc oc-sm-restore-data
+```
+
+This is useful for restore and recovery workflows where you want to:
+- populate a new PVC from backup
+- launch a separate validation instance against that PVC
+- inspect the restored state before cutting over
+
+Important: `--existing-pvc` only attaches a PVC that already exists in Kubernetes. It does not restore from S3 by itself. Internally the deploy script disables the chart's default dynamic `data` volume and mounts your supplied PVC at `/home/node/.openclaw` through a separate persistence entry.
+
+If PVCs already exist for the same release name, the deploy script now warns and asks for confirmation before deleting them. Answering `n` cancels the deploy.
 
 ### 2. Deploy Optional Ollama Embeddings Service
 
@@ -97,7 +121,93 @@ To remove OpenClaw from your cluster:
 This script will prompt you to:
 - Confirm deletion
 - Delete the release PersistentVolumeClaim (data)
+- Delete release-owned ConfigMaps
 - Preserve the `openclaw` namespace
+
+### 5. Configure PVC Backups
+
+To create the cluster-side PVC backup workflow for all OpenClaw PVCs in the `openclaw` namespace:
+
+```bash
+./setup-pvc-backup.sh
+```
+
+You can also provide values non-interactively:
+
+```bash
+./setup-pvc-backup.sh \
+  --bucket dame-openclaw-backup \
+  --access-key AKIA... \
+  --secret-key '...' \
+  --region ap-southeast-2 \
+  --cluster au01-0
+```
+
+This script:
+- checks cluster access using your kubeconfig
+- derives the default backup cluster id from the active kube context unless `--cluster` is supplied
+- creates or updates the `openclaw-backup-aws` secret
+- creates or updates the `openclaw-backup-script` ConfigMap from `scripts/openclaw-backup-s3.py`
+- applies `k8s/pvc-backup-cronjob.yaml`
+- prints the manual trigger command for the backup dispatcher
+
+The backup dispatcher runs as a Kubernetes `CronJob`, so once applied it runs on the cluster and does not depend on your laptop remaining online.
+
+Manual trigger:
+
+```bash
+kubectl create job --from=cronjob/openclaw-pvc-backup-dispatcher \
+  -n openclaw openclaw-pvc-backup-dispatcher-manual-$(date +%s)
+```
+
+Useful checks:
+
+```bash
+kubectl get cronjob -n openclaw openclaw-pvc-backup-dispatcher
+kubectl get jobs -n openclaw
+kubectl get pods -n openclaw | grep openclaw-pvc-backup
+kubectl logs -n openclaw job/<job-name>
+```
+
+Each child backup job discovers one PVC, reads its `app.kubernetes.io/instance` label, mounts that PVC read-only, and uploads a backup to:
+
+```text
+s3://<bucket>/openclaw-backups/<cluster>/<instance>/<pvc>/<timestamp>.tar.gz
+```
+
+For example:
+
+```text
+s3://dame-openclaw-backup/openclaw-backups/au01-0/oc-sm/openclaw-data/2026-04-07T020000Z.tar.gz
+```
+
+### 6. Restore a PVC Backup
+
+To restore one backup from S3 into a new PVC and then launch a new OpenClaw instance against it:
+
+```bash
+./restore-pvc-backup.sh \
+  --s3-uri s3://dame-openclaw-backup/openclaw-backups/au01-0/oc-sm/openclaw-data/2026-04-07T020000Z.tar.gz \
+  --pvc-name oc-sm-restore-data \
+  --release-name oc-sm-restore
+```
+
+This script:
+- checks cluster access
+- verifies the `openclaw-backup-aws` secret exists
+- creates the target PVC
+- creates a temporary restore pod in the cluster
+- downloads the selected backup from S3 into that pod
+- extracts it into the PVC
+- prints the matching `openclaw-deploy.sh --existing-pvc` command
+
+The final deploy step is still separate by design:
+
+```bash
+./openclaw-deploy.sh --release-name oc-sm-restore --existing-pvc oc-sm-restore-data
+```
+
+The separation is intentional so you can inspect or validate the restored PVC before starting a new OpenClaw instance against it.
 
 ## Deployment Architecture
 
@@ -113,7 +223,7 @@ This script will prompt you to:
   - Enables web scraping and browser automation
 
 - **Init Containers**:
-  - `init-config`: Merges Helm configuration with runtime config
+  - `init-config`: Replaces runtime config with the rendered Helm configuration
   - `init-skills`: Installs ClawHub skills (weather, gog)
 
 - **Optional Ollama Embeddings Deployment**: Separate in-cluster embeddings service
@@ -365,7 +475,7 @@ kubectl rollout restart deployment/openclaw -n openclaw
 
 ### Sync Shared Plugins And Skills
 
-To push the repo's current `plugins/` and `skills/` folders into every running OpenClaw deployment, then restart each deployment:
+To push the repo's current `openclaw/plugins/` and `openclaw/skills/` folders into every running OpenClaw deployment, then restart each deployment:
 
 ```bash
 ./sync-openclaw-shared-config.sh
@@ -373,7 +483,7 @@ To push the repo's current `plugins/` and `skills/` folders into every running O
 
 This script:
 - detects all deployments labeled as OpenClaw in the `openclaw` namespace
-- copies `plugins/` and `skills/` into `~/.openclaw/` in the running pod
+- copies `openclaw/plugins/` and `openclaw/skills/` into `~/.openclaw/` in the running pod
 - restarts each deployment
 - waits for rollout completion and prints status
 

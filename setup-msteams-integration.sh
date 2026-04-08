@@ -11,7 +11,7 @@ NAMESPACE="openclaw"
 RELEASE_NAME=""
 TEAMS_PORT="3978"
 TEAMS_PATH="/api/messages"
-LOCAL_PLUGIN_DIR="plugins/msteams"
+LOCAL_PLUGIN_DIR="openclaw/plugins/msteams"
 POD_NAME=""
 DEPLOYMENT_LABEL_NAME=""
 

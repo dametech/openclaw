@@ -167,7 +167,7 @@ Atlassian now supports **scoped API tokens** with granular permissions:
 
 ## Adding to the Provisioning Script
 
-The `scripts/create-agent.sh` does not currently set up Jira access because it's a one-time global setup (not per-agent). To include in provisioning:
+The [`create-agent.sh`](/mnt/c/projects/openclaw/scripts/create-agent.sh) script does not currently set up Jira access because it's a one-time global setup (not per-agent). To include in provisioning:
 
 ```bash
 # In your provisioning flow, after credential store exists:

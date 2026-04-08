@@ -51,7 +51,7 @@ jira.add_comment("PROJ-123", [
 ])
 ```
 
-The skill directory is this repo path: `skills/dame-jira`
+The skill directory is this repo path: `openclaw/skills/dame-jira`
 
 ## Key Rules
 

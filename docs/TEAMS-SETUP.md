@@ -245,7 +245,7 @@ https://<release>.openclaw.dametech.net/api/messages
 
 It then:
 
-- copies the vendored local `plugins/msteams` source into the target pod and installs it via the OpenClaw CLI
+- copies the vendored local `openclaw/plugins/msteams` source into the target pod and installs it via the OpenClaw CLI
 - creates a Teams credentials secret for that release
 - creates a release-specific NodePort service for the Teams webhook
 - creates a release-specific `Ingress` routing `/api/messages` to that service
@@ -253,7 +253,7 @@ It then:
 
 ### Install Teams Plugin
 
-This repo vendors the Teams plugin source under [`plugins/msteams`](/mnt/c/projects/openclaw/plugins/msteams).
+This repo vendors the Teams plugin source under [`openclaw/plugins/msteams`](/mnt/c/projects/openclaw/openclaw/plugins/msteams).
 `setup-msteams-integration.sh` copies that folder into the target pod and runs:
 
 ```bash
