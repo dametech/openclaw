@@ -20,8 +20,15 @@ spec:
     spec:
       containers:
         - name: ollama
-          image: ollama/ollama:latest
+          image: ollama/ollama:0.13.5
           imagePullPolicy: IfNotPresent
+          env:
+            - name: OLLAMA_NUM_PARALLEL
+              value: "2"
+            - name: OLLAMA_MAX_QUEUE
+              value: "32"
+            - name: OLLAMA_KEEP_ALIVE
+              value: "30m"
           command:
             - /bin/sh
             - -c
@@ -41,8 +48,8 @@ spec:
               name: http
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 2
+              memory: 2Gi
             limits:
-              cpu: 2000m
-              memory: 4Gi
+              cpu: 3
+              memory: 6Gi

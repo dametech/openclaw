@@ -216,6 +216,8 @@ delete_release_configmaps() {
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-ms-graph-plugin" --ignore-not-found
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-jira-plugin" --ignore-not-found
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-pod-delegate-plugin" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-workspace-archive" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-bootstrap-doc" --ignore-not-found
 }
 
 helm_release_exists() {
@@ -312,6 +314,9 @@ default_slack_channel = {
     "appToken": "${SLACK_APP_TOKEN}",
     "botToken": "${SLACK_BOT_TOKEN}",
     "groupPolicy": "open",
+    "streaming": {"mode": "progress"},
+    "ackReaction": "eyes",
+    "typingReaction": "thinking_face",
 }
 default_msteams_channel = {
     "enabled": False,
@@ -325,6 +330,9 @@ default_msteams_channel = {
 }
 preserved_slack_channel = json.loads(preserved_slack_channel_json) if preserved_slack_channel_json else None
 preserved_msteams_channel = json.loads(preserved_msteams_channel_json) if preserved_msteams_channel_json else None
+slack_channel = default_slack_channel.copy()
+if preserved_slack_channel:
+    slack_channel.update(preserved_slack_channel)
 replacements = {
     "__GATEWAY_AUTH_TOKEN_JSON__": json.dumps(${GATEWAY_AUTH_TOKEN@Q}),
     "__MSGRAPH_TENANT_ID_JSON__": json.dumps(${MSGRAPH_TENANT_ID@Q}),
@@ -332,7 +340,7 @@ replacements = {
     "__JIRA_BASE_URL_JSON__": json.dumps(${JIRA_BASE_URL@Q}),
     "__OLLAMA_EMBEDDINGS_MODEL_JSON__": json.dumps(${OLLAMA_EMBEDDINGS_MODEL@Q}),
     "__POD_DELEGATE_TARGETS_JSON__": pod_delegate_targets_json,
-    "__SLACK_CHANNEL_JSON__": json.dumps(preserved_slack_channel or default_slack_channel),
+    "__SLACK_CHANNEL_JSON__": json.dumps(slack_channel),
     "__MSTEAMS_CHANNEL_JSON__": json.dumps(preserved_msteams_channel or default_msteams_channel),
 }
 rendered = template
@@ -544,10 +552,12 @@ create_values() {
 
     local persistence_data_block
     local pod_delegate_targets_json
+    local workspace_archive_b64
     pod_delegate_targets_json="${POD_DELEGATE_TARGETS_JSON:-}"
     if [ -z "$pod_delegate_targets_json" ]; then
         pod_delegate_targets_json='{}'
     fi
+    workspace_archive_b64=$(tar -C openclaw/workspace -czf - . | base64 | tr -d '\n')
 
     render_openclaw_config "$pod_delegate_targets_json"
 
@@ -672,22 +682,17 @@ $(sed 's/^/          /' openclaw/plugins/pod-delegate/package.json)
 $(sed 's/^/          /' openclaw/plugins/pod-delegate/openclaw.plugin.json)
         index.js: |
 $(sed 's/^/          /' openclaw/plugins/pod-delegate/index.js)
-    bootstrap-doc:
+    workspace-archive:
       data:
-        BOOTSTRAP.md: |
-$(sed 's/^/          /' openclaw/workspace/BOOTSTRAP.md)
-        TOOLS.md: |
-$(sed 's/^/          /' openclaw/workspace/TOOLS.md)
+        workspace.tar.gz.b64: |
+          $workspace_archive_b64
     startup-script:
       data:
         start-openclaw.sh: |
           #!/bin/sh
           set -eu
 
-          BOOTSTRAP_FILE="/home/node/.openclaw/workspace/BOOTSTRAP.md"
-          BOOTSTRAP_SOURCE="/bootstrap-source/BOOTSTRAP.md"
-          TOOLS_FILE="/home/node/.openclaw/workspace/TOOLS.md"
-          TOOLS_SOURCE="/bootstrap-source/TOOLS.md"
+          WORKSPACE_ARCHIVE_SOURCE="/workspace-source/workspace.tar.gz.b64"
           WORKSPACE_DOCS_VERSION_FILE="/home/node/.openclaw/workspace/.workspace-docs-version"
 
           mkdir -p /home/node/.openclaw/workspace
@@ -705,10 +710,9 @@ $(sed 's/^/          /' openclaw/workspace/TOOLS.md)
           cp /plugin-source-pod-delegate/index.js /home/node/.openclaw/plugins/pod-delegate/index.js
 
           DEPLOYED_WORKSPACE_DOCS_HASH="\$(cat "\$WORKSPACE_DOCS_VERSION_FILE" 2>/dev/null || true)"
-          WORKSPACE_DOCS_SOURCE_HASH="\$(cat "\$BOOTSTRAP_SOURCE" "\$TOOLS_SOURCE" | sha256sum | awk '{print \$1}')"
-          if [ ! -f "\$BOOTSTRAP_FILE" ] || [ ! -f "\$TOOLS_FILE" ] || [ "\$WORKSPACE_DOCS_SOURCE_HASH" != "\$DEPLOYED_WORKSPACE_DOCS_HASH" ]; then
-            cp "\$BOOTSTRAP_SOURCE" "\$BOOTSTRAP_FILE"
-            cp "\$TOOLS_SOURCE" "\$TOOLS_FILE"
+          WORKSPACE_DOCS_SOURCE_HASH="\$(sha256sum "\$WORKSPACE_ARCHIVE_SOURCE" | awk '{print \$1}')"
+          if [ "\$WORKSPACE_DOCS_SOURCE_HASH" != "\$DEPLOYED_WORKSPACE_DOCS_HASH" ]; then
+            base64 -d "\$WORKSPACE_ARCHIVE_SOURCE" | tar -xzf - -C /home/node/.openclaw/workspace
             printf '%s\n' "\$WORKSPACE_DOCS_SOURCE_HASH" > "\$WORKSPACE_DOCS_VERSION_FILE"
           fi
 
@@ -738,12 +742,12 @@ ${persistence_data_block}
       globalMounts:
         - path: /plugin-source-pod-delegate
           readOnly: true
-    bootstrap-doc:
+    workspace-archive:
       enabled: true
       type: configMap
-      name: '{{ .Release.Name }}-bootstrap-doc'
+      name: '{{ .Release.Name }}-workspace-archive'
       globalMounts:
-        - path: /bootstrap-source
+        - path: /workspace-source
           readOnly: true
     startup-script:
       enabled: true

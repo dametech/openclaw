@@ -539,7 +539,9 @@ To push the repo's current `openclaw/plugins/`, `openclaw/skills/`, and `opencla
 
 This script:
 - detects all deployments labeled as OpenClaw in the `openclaw` namespace
-- copies `openclaw/plugins/`, `openclaw/skills/`, and `openclaw/workspace/` into `~/.openclaw/` in the running pod
+- copies `openclaw/plugins/` into `~/.openclaw/plugins/`
+- copies `openclaw/skills/` into `~/.openclaw/workspace/skills/`
+- copies `openclaw/workspace/` into `~/.openclaw/workspace/`
 - includes repo-managed workspace docs such as `BOOTSTRAP.md` and `TOOLS.md`
 - overwrites matching files and adds new files
 - leaves pod-only files in place

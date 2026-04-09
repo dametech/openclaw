@@ -139,9 +139,9 @@ sync_deployment() {
         return 1
     fi
 
-    kubectl exec -n "$NAMESPACE" "$pod_name" -c main -- mkdir -p "$CONFIG_ROOT/plugins" "$CONFIG_ROOT/skills" "$CONFIG_ROOT/workspace"
+    kubectl exec -n "$NAMESPACE" "$pod_name" -c main -- mkdir -p "$CONFIG_ROOT/plugins" "$CONFIG_ROOT/workspace/skills" "$CONFIG_ROOT/workspace"
     kubectl cp openclaw/plugins/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/plugins" -c main
-    kubectl cp openclaw/skills/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/skills" -c main
+    kubectl cp openclaw/skills/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/workspace/skills" -c main
     kubectl cp openclaw/workspace/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/workspace" -c main
 
     kubectl rollout restart "deployment/$deployment" -n "$NAMESPACE"

@@ -21,6 +21,7 @@
   "agents": {
     "defaults": {
       "workspace": "/home/node/.openclaw/workspace",
+      "thinkingDefault": "adaptive",
       "model": {
         "primary": "amazon-bedrock/global.anthropic.claude-sonnet-4-6"
       },
@@ -42,8 +43,13 @@
         }
       },
       "userTimezone": "Australia/Brisbane",
+      "typingMode": "instant",
+      "typingIntervalSeconds": 6,
       "timeoutSeconds": 600,
-      "maxConcurrent": 1,
+      "maxConcurrent": 2,
+      "subagents": {
+        "maxConcurrent": 8
+      },
       "memorySearch": {
         "provider": "ollama",
         "model": __OLLAMA_EMBEDDINGS_MODEL_JSON__,

@@ -35,8 +35,13 @@ assert_contains '"amazon-bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0
 assert_contains '"cacheRetention": "ephemeral"'
 assert_contains '"cacheRetention": "none"'
 assert_contains '"userTimezone": "Australia/Brisbane"'
+assert_contains '"thinkingDefault": "adaptive"'
+assert_contains '"typingMode": "instant"'
+assert_contains '"typingIntervalSeconds": 6'
 assert_contains '"id": "main"'
 assert_contains '"default": true'
+assert_contains '"subagents"'
+assert_contains '"maxConcurrent": 4'
 assert_contains '"memorySearch"'
 assert_contains '"provider": "ollama"'
 assert_contains 'http://ollama-embeddings.openclaw.svc.cluster.local:11434'
@@ -61,6 +66,7 @@ assert_contains '__MSTEAMS_CHANNEL_JSON__'
 assert_contains '"/home/node/.openclaw/plugins/ms-graph-query"'
 assert_contains '"/home/node/.openclaw/plugins/jira-query"'
 assert_contains '"/home/node/.openclaw/plugins/pod-delegate"'
+assert_contains '"maxConcurrent": 2'
 
 if grep -Fq -- '"tools"' "$TEMPLATE"; then
     echo "unexpected tools block in $TEMPLATE" >&2
