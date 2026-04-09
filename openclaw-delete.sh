@@ -29,6 +29,17 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+collect_release_pvcs() {
+    local labeled_pvcs mounted_pvcs
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    labeled_pvcs=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
+    mounted_pvcs=$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{range .spec.template.spec.volumes[*]}{.persistentVolumeClaim.claimName}{"\n"}{end}' 2>/dev/null | sed '/^$/d; s#^#persistentvolumeclaim/#' || true)
+
+    printf '%s\n%s\n' "$labeled_pvcs" "$mounted_pvcs" | sed '/^$/d' | sort -u
+}
+
 # Prompt for release name
 get_release_name() {
     local input_name
@@ -85,7 +96,7 @@ delete_pvc() {
     export KUBECONFIG="$KUBECONFIG_PATH"
     local pvc_names
     local pvc_name
-    pvc_names=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
+    pvc_names=$(collect_release_pvcs)
 
     if [ -z "$pvc_names" ]; then
         log_warn "No PVCs found for release '$RELEASE_NAME'."

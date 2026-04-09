@@ -413,7 +413,6 @@ const plugin = {
           };
         },
       }),
-      { optional: true },
     );
   },
 };

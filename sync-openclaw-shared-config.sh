@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Sync shared plugins and skills into all OpenClaw pods, then restart them.
+# Sync shared plugins, skills, and workspace into all OpenClaw pods, then restart them.
 #
 
 set -euo pipefail
@@ -31,7 +31,7 @@ log_error() {
 show_usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Syncs repo openclaw/plugins/ and openclaw/skills/ into all OpenClaw deployments in the namespace,"
+    echo "Syncs repo openclaw/plugins/, openclaw/skills/, and openclaw/workspace/ into all OpenClaw deployments in the namespace,"
     echo "restarts each deployment, and prints rollout status."
     echo ""
     echo "Options:"
@@ -81,6 +81,11 @@ fi
 
 if [ ! -d "openclaw/skills" ]; then
     log_error "openclaw/skills directory not found in current working directory."
+    exit 1
+fi
+
+if [ ! -d "openclaw/workspace" ]; then
+    log_error "openclaw/workspace directory not found in current working directory."
     exit 1
 fi
 
@@ -134,9 +139,10 @@ sync_deployment() {
         return 1
     fi
 
-    kubectl exec -n "$NAMESPACE" "$pod_name" -c main -- mkdir -p "$CONFIG_ROOT/plugins" "$CONFIG_ROOT/skills"
+    kubectl exec -n "$NAMESPACE" "$pod_name" -c main -- mkdir -p "$CONFIG_ROOT/plugins" "$CONFIG_ROOT/skills" "$CONFIG_ROOT/workspace"
     kubectl cp openclaw/plugins/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/plugins" -c main
     kubectl cp openclaw/skills/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/skills" -c main
+    kubectl cp openclaw/workspace/. "$NAMESPACE/$pod_name:$CONFIG_ROOT/workspace" -c main
 
     kubectl rollout restart "deployment/$deployment" -n "$NAMESPACE"
 
@@ -181,4 +187,4 @@ if [ "$overall_status" -ne 0 ]; then
     exit "$overall_status"
 fi
 
-log_info "Shared plugins and skills synced to all OpenClaw deployments."
+log_info "Shared plugins, skills, and workspace synced to all OpenClaw deployments."

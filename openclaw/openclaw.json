@@ -163,11 +163,8 @@
       }
     }
   },
-  "tools": {
-    "allow": [
-      "ms_graph_query",
-      "jira_query",
-      "pod_delegate"
-    ]
+  "channels": {
+    "slack": __SLACK_CHANNEL_JSON__,
+    "msteams": __MSTEAMS_CHANNEL_JSON__
   }
 }

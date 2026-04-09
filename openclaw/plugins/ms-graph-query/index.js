@@ -580,7 +580,6 @@ const plugin = {
           };
         },
       }),
-      { optional: true },
     );
   },
 };

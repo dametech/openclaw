@@ -18,6 +18,8 @@ VALUES_FILE="/tmp/${RELEASE_NAME}-values.yaml"
 RENDERED_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw.json"
 OPENCLAW_CONFIG_TEMPLATE="openclaw/openclaw.json"
 GATEWAY_AUTH_TOKEN=""
+PRESERVED_SLACK_CHANNEL_JSON=""
+PRESERVED_MSTEAMS_CHANNEL_JSON=""
 OLLAMA_EMBEDDINGS_MODEL="${OLLAMA_EMBEDDINGS_MODEL:-nomic-embed-text}"
 
 # Colors for output
@@ -189,12 +191,28 @@ check_existing_pvc() {
     fi
 }
 
+label_existing_pvc_for_release() {
+    if [ -z "$EXISTING_PVC" ]; then
+        return
+    fi
+
+    log_info "Labelling existing PVC '$EXISTING_PVC' for release '$RELEASE_NAME'..."
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    kubectl label pvc "$EXISTING_PVC" -n "$NAMESPACE" \
+        "app.kubernetes.io/instance=$RELEASE_NAME" \
+        "app.kubernetes.io/managed-by=openclaw-deploy" \
+        --overwrite >/dev/null
+}
+
 delete_release_configmaps() {
     export KUBECONFIG="$KUBECONFIG_PATH"
 
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-config" --ignore-not-found
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-scripts" --ignore-not-found
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-startup-script" --ignore-not-found
+    kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-dev-tools-script" --ignore-not-found
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-ms-graph-plugin" --ignore-not-found
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-jira-plugin" --ignore-not-found
     kubectl delete configmap -n "$NAMESPACE" "${RELEASE_NAME}-pod-delegate-plugin" --ignore-not-found
@@ -207,12 +225,26 @@ helm_release_exists() {
 
 delete_existing_release_pvcs() {
     local pvc_names
+    local filtered_pvc_names
     local confirm_delete
     local pvc_name
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
     pvc_names=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name 2>/dev/null || true)
+    filtered_pvc_names=""
+
+    if [ -n "$pvc_names" ]; then
+        while IFS= read -r pvc_name; do
+            [ -z "$pvc_name" ] && continue
+            if [ -n "$EXISTING_PVC" ] && [ "$pvc_name" = "persistentvolumeclaim/$EXISTING_PVC" ]; then
+                continue
+            fi
+            filtered_pvc_names="${filtered_pvc_names}${pvc_name}"$'\n'
+        done <<< "$pvc_names"
+    fi
+
+    pvc_names="$(printf '%s' "$filtered_pvc_names" | sed '/^$/d' || true)"
 
     if [ -z "$pvc_names" ]; then
         return
@@ -271,7 +303,28 @@ template_path = Path(${OPENCLAW_CONFIG_TEMPLATE@Q})
 rendered_config_path = Path(${RENDERED_CONFIG_JSON@Q})
 template = template_path.read_text()
 pod_delegate_targets_json = ${pod_delegate_targets_json@Q}
+preserved_slack_channel_json = ${PRESERVED_SLACK_CHANNEL_JSON@Q}
+preserved_msteams_channel_json = ${PRESERVED_MSTEAMS_CHANNEL_JSON@Q}
 json.loads(pod_delegate_targets_json)
+default_slack_channel = {
+    "enabled": False,
+    "mode": "socket",
+    "appToken": "${SLACK_APP_TOKEN}",
+    "botToken": "${SLACK_BOT_TOKEN}",
+    "groupPolicy": "open",
+}
+default_msteams_channel = {
+    "enabled": False,
+    "appId": "${MSTEAMS_APP_ID}",
+    "appPassword": "${MSTEAMS_APP_PASSWORD}",
+    "tenantId": "${MSTEAMS_TENANT_ID}",
+    "webhook": {"port": 3978, "path": "/api/messages"},
+    "dmPolicy": "open",
+    "allowFrom": ["*"],
+    "groupPolicy": "open",
+}
+preserved_slack_channel = json.loads(preserved_slack_channel_json) if preserved_slack_channel_json else None
+preserved_msteams_channel = json.loads(preserved_msteams_channel_json) if preserved_msteams_channel_json else None
 replacements = {
     "__GATEWAY_AUTH_TOKEN_JSON__": json.dumps(${GATEWAY_AUTH_TOKEN@Q}),
     "__MSGRAPH_TENANT_ID_JSON__": json.dumps(${MSGRAPH_TENANT_ID@Q}),
@@ -279,6 +332,8 @@ replacements = {
     "__JIRA_BASE_URL_JSON__": json.dumps(${JIRA_BASE_URL@Q}),
     "__OLLAMA_EMBEDDINGS_MODEL_JSON__": json.dumps(${OLLAMA_EMBEDDINGS_MODEL@Q}),
     "__POD_DELEGATE_TARGETS_JSON__": pod_delegate_targets_json,
+    "__SLACK_CHANNEL_JSON__": json.dumps(preserved_slack_channel or default_slack_channel),
+    "__MSTEAMS_CHANNEL_JSON__": json.dumps(preserved_msteams_channel or default_msteams_channel),
 }
 rendered = template
 for placeholder, value in replacements.items():
@@ -289,6 +344,65 @@ if leftovers:
 json.loads(rendered)
 rendered_config_path.write_text(rendered + "\n")
 PY
+}
+
+read_runtime_config_from_existing_pvc() {
+    local reader_pod safe_release
+
+    if [ -z "$EXISTING_PVC" ]; then
+        return 0
+    fi
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    safe_release="$(printf '%s' "$RELEASE_NAME" | tr -cs 'a-zA-Z0-9-' '-' | tr '[:upper:]' '[:lower:]' | sed 's/^-//; s/-$//' | cut -c1-20)"
+    if [ -z "$safe_release" ]; then
+        safe_release="openclaw"
+    fi
+
+    reader_pod="openclaw-config-reader-${safe_release}-$(date -u +%s)"
+
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $reader_pod
+  namespace: $NAMESPACE
+spec:
+  restartPolicy: Never
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: reader
+      image: alpine:3.20
+      command: ["/bin/sh", "-c", "sleep 300"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      volumeMounts:
+        - name: data
+          mountPath: /restore-target
+          readOnly: true
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: $EXISTING_PVC
+        readOnly: true
+EOF
+
+    if kubectl wait --for=condition=Ready pod/"$reader_pod" -n "$NAMESPACE" --timeout=180s >/dev/null 2>&1; then
+        if kubectl exec -n "$NAMESPACE" "$reader_pod" -c reader -- test -f /restore-target/openclaw.json; then
+            kubectl exec -n "$NAMESPACE" "$reader_pod" -c reader -- cat /restore-target/openclaw.json
+        fi
+    fi
+
+    kubectl delete pod/"$reader_pod" -n "$NAMESPACE" --ignore-not-found >/dev/null 2>&1 || true
 }
 
 # Prompt for AWS Bedrock credentials
@@ -445,8 +559,14 @@ create_values() {
       enabled: true
       type: persistentVolumeClaim
       existingClaim: $EXISTING_PVC
-      globalMounts:
-        - path: /home/node/.openclaw
+      advancedMounts:
+        main:
+          main:
+            - path: /home/node/.openclaw
+          init-config:
+            - path: /home/node/.openclaw
+          init-dev-tools:
+            - path: /data
 EOF
 )
     else
@@ -457,6 +577,14 @@ EOF
       accessMode: ReadWriteOnce
       size: 5Gi
       storageClass: talos-hostpath
+      advancedMounts:
+        main:
+          main:
+            - path: /home/node/.openclaw
+          init-config:
+            - path: /home/node/.openclaw
+          init-dev-tools:
+            - path: /data
 EOF
 )
     fi
@@ -468,6 +596,16 @@ app-template:
   controllers:
     main:
       initContainers:
+        init-dev-tools:
+          image:
+            repository: debian
+            tag: bookworm-slim
+          command:
+            - /bin/bash
+            - -c
+            - |
+              apt-get update -qq && apt-get install -y -qq curl unzip tar gzip nodejs npm
+              bash /dev-tools-scripts/install-dev-tools.sh
         init-config:
           env:
             CONFIG_MODE: replace
@@ -481,9 +619,18 @@ app-template:
           # Reference the secret containing the Bedrock credentials
           env:
             NODE_OPTIONS: "--max-old-space-size=2048"
+            PATH: "/home/node/.openclaw/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+            GOPATH: "/home/node/.openclaw/go"
+            GOROOT: "/home/node/.openclaw/tools/go"
           envFrom:
             - secretRef:
                 name: $SECRET_NAME
+            - secretRef:
+                name: ${RELEASE_NAME}-slack-tokens
+                optional: true
+            - secretRef:
+                name: ${RELEASE_NAME}-teams-credentials
+                optional: true
           resources:
             requests:
               cpu: 500m
@@ -497,6 +644,10 @@ app-template:
       data:
         openclaw.json: |
 $(sed 's/^/          /' "$RENDERED_CONFIG_JSON")
+    dev-tools-script:
+      data:
+        install-dev-tools.sh: |
+$(sed 's/^/          /' scripts/install-dev-tools.sh)
     ms-graph-plugin:
       data:
         package.json: |
@@ -525,6 +676,8 @@ $(sed 's/^/          /' openclaw/plugins/pod-delegate/index.js)
       data:
         BOOTSTRAP.md: |
 $(sed 's/^/          /' openclaw/workspace/BOOTSTRAP.md)
+        TOOLS.md: |
+$(sed 's/^/          /' openclaw/workspace/TOOLS.md)
     startup-script:
       data:
         start-openclaw.sh: |
@@ -533,7 +686,9 @@ $(sed 's/^/          /' openclaw/workspace/BOOTSTRAP.md)
 
           BOOTSTRAP_FILE="/home/node/.openclaw/workspace/BOOTSTRAP.md"
           BOOTSTRAP_SOURCE="/bootstrap-source/BOOTSTRAP.md"
-          BOOTSTRAP_VERSION_FILE="/home/node/.openclaw/workspace/.bootstrap-version"
+          TOOLS_FILE="/home/node/.openclaw/workspace/TOOLS.md"
+          TOOLS_SOURCE="/bootstrap-source/TOOLS.md"
+          WORKSPACE_DOCS_VERSION_FILE="/home/node/.openclaw/workspace/.workspace-docs-version"
 
           mkdir -p /home/node/.openclaw/workspace
           mkdir -p /home/node/.openclaw/plugins/ms-graph-query
@@ -549,11 +704,12 @@ $(sed 's/^/          /' openclaw/workspace/BOOTSTRAP.md)
           cp /plugin-source-pod-delegate/openclaw.plugin.json /home/node/.openclaw/plugins/pod-delegate/openclaw.plugin.json
           cp /plugin-source-pod-delegate/index.js /home/node/.openclaw/plugins/pod-delegate/index.js
 
-          DEPLOYED_BOOTSTRAP_HASH="$(cat "\$BOOTSTRAP_VERSION_FILE" 2>/dev/null || true)"
-          BOOTSTRAP_SOURCE_HASH="$(sha256sum "\$BOOTSTRAP_SOURCE" | awk '{print $1}')"
-          if [ ! -f "\$BOOTSTRAP_FILE" ] || [ "\$BOOTSTRAP_SOURCE_HASH" != "\$DEPLOYED_BOOTSTRAP_HASH" ]; then
+          DEPLOYED_WORKSPACE_DOCS_HASH="\$(cat "\$WORKSPACE_DOCS_VERSION_FILE" 2>/dev/null || true)"
+          WORKSPACE_DOCS_SOURCE_HASH="\$(cat "\$BOOTSTRAP_SOURCE" "\$TOOLS_SOURCE" | sha256sum | awk '{print \$1}')"
+          if [ ! -f "\$BOOTSTRAP_FILE" ] || [ ! -f "\$TOOLS_FILE" ] || [ "\$WORKSPACE_DOCS_SOURCE_HASH" != "\$DEPLOYED_WORKSPACE_DOCS_HASH" ]; then
             cp "\$BOOTSTRAP_SOURCE" "\$BOOTSTRAP_FILE"
-            printf '%s\n' "\$BOOTSTRAP_SOURCE_HASH" > "\$BOOTSTRAP_VERSION_FILE"
+            cp "\$TOOLS_SOURCE" "\$TOOLS_FILE"
+            printf '%s\n' "\$WORKSPACE_DOCS_SOURCE_HASH" > "\$WORKSPACE_DOCS_VERSION_FILE"
           fi
 
           exec openclaw gateway --bind lan --port 18789
@@ -596,6 +752,13 @@ ${persistence_data_block}
       globalMounts:
         - path: /startup-scripts
           readOnly: true
+    dev-tools-script:
+      enabled: true
+      type: configMap
+      name: '{{ .Release.Name }}-dev-tools-script'
+      globalMounts:
+        - path: /dev-tools-scripts
+          readOnly: true
 EOF
 
     validate_generated_config
@@ -616,6 +779,58 @@ show_deploy_diagnostics() {
     fi
 }
 
+print_deploy_progress() {
+    local deployment_status pod_summary
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    deployment_status=$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}/{.status.replicas} ready, {.status.updatedReplicas} updated, {.status.availableReplicas} available' 2>/dev/null || true)
+    if [ -n "$deployment_status" ]; then
+        log_info "Deployment status: $deployment_status"
+    else
+        log_info "Deployment status: waiting for deployment object..."
+    fi
+
+    pod_summary=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" --no-headers 2>/dev/null || true)
+    if [ -n "$pod_summary" ]; then
+        printf '%s\n' "$pod_summary"
+    else
+        log_info "Pods: waiting for pods..."
+    fi
+}
+
+run_helm_with_progress() {
+    local helm_log status
+    local -a helm_cmd=("$@")
+
+    helm_log="$(mktemp)"
+    status=0
+
+    log_info "Starting Helm deploy in background so progress can be reported..."
+    "${helm_cmd[@]}" >"$helm_log" 2>&1 &
+    local helm_pid=$!
+
+    while kill -0 "$helm_pid" 2>/dev/null; do
+        log_info "Waiting for Helm deploy to finish..."
+        log_info "Helm deploy still in progress."
+        print_deploy_progress
+        sleep 10
+    done
+
+    wait "$helm_pid" || status=$?
+
+    if [ -s "$helm_log" ]; then
+        cat "$helm_log"
+    fi
+    rm -f "$helm_log"
+
+    if [ "$status" -ne 0 ]; then
+        return "$status"
+    fi
+
+    return 0
+}
+
 # Deploy OpenClaw
 deploy_openclaw() {
     log_info "Deploying OpenClaw..."
@@ -624,7 +839,7 @@ deploy_openclaw() {
 
     if helm_release_exists; then
         log_warn "OpenClaw is already installed. Upgrading..."
-        if ! helm upgrade "$RELEASE_NAME" "$HELM_REPO/openclaw" \
+        if ! run_helm_with_progress helm upgrade "$RELEASE_NAME" "$HELM_REPO/openclaw" \
             --namespace "$NAMESPACE" \
             --values "$VALUES_FILE" \
             --wait \
@@ -633,7 +848,7 @@ deploy_openclaw() {
             exit 1
         fi
     else
-        if ! helm install "$RELEASE_NAME" "$HELM_REPO/openclaw" \
+        if ! run_helm_with_progress helm install "$RELEASE_NAME" "$HELM_REPO/openclaw" \
             --namespace "$NAMESPACE" \
             --values "$VALUES_FILE" \
             --wait \
@@ -647,7 +862,13 @@ deploy_openclaw() {
 ensure_gateway_auth_token() {
     local current_token
 
+    capture_existing_runtime_config
+
     log_info "Preserving existing gateway token or generating a new one..."
+
+    if [ -n "$GATEWAY_AUTH_TOKEN" ]; then
+        return
+    fi
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
@@ -664,6 +885,49 @@ import secrets
 print(secrets.token_urlsafe(32))
 PY
 )
+}
+
+capture_existing_runtime_config() {
+    local current_config_json
+    local current_token
+    local preserved_values=()
+
+    log_info "Preserving existing gateway token and channel config when available..."
+
+    export KUBECONFIG="$KUBECONFIG_PATH"
+
+    current_config_json=""
+    if kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
+        current_config_json=$(kubectl exec -n "$NAMESPACE" "deployment/$RELEASE_NAME" -c main -- cat /home/node/.openclaw/openclaw.json 2>/dev/null || true)
+    elif [ -n "$EXISTING_PVC" ]; then
+        current_config_json=$(read_runtime_config_from_existing_pvc || true)
+    fi
+
+    if [ -z "$current_config_json" ]; then
+        return
+    fi
+
+    mapfile -t preserved_values < <(printf '%s' "$current_config_json" | python3 -c '
+import json,sys
+raw=sys.stdin.read().strip()
+if not raw:
+    raise SystemExit(0)
+try:
+    data=json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+channels=data.get("channels", {})
+print(data.get("gateway", {}).get("auth", {}).get("token", ""))
+print(json.dumps(channels.get("slack")) if "slack" in channels else "")
+print(json.dumps(channels.get("msteams")) if "msteams" in channels else "")
+')
+
+    current_token="${preserved_values[0]}"
+    if [ -n "$current_token" ]; then
+        GATEWAY_AUTH_TOKEN="$current_token"
+    fi
+    PRESERVED_SLACK_CHANNEL_JSON="${preserved_values[1]}"
+    PRESERVED_MSTEAMS_CHANNEL_JSON="${preserved_values[2]}"
 }
 
 apply_rendered_openclaw_config() {
@@ -750,6 +1014,7 @@ main() {
     get_jira_config
     setup_helm_repo
     create_namespace
+    label_existing_pvc_for_release
     ensure_gateway_auth_token
     delete_existing_release_pvcs
     create_secret

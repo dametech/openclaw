@@ -2,7 +2,7 @@ display_information:
   name: OpenClaw Bot
   description: AI-powered automation assistant for your workspace
   background_color: "#2c3e50"
-  long_description: OpenClaw is an AI assistant that helps with DevOps, development, and automation tasks. It can execute commands, interact with tools, and help manage your infrastructure.
+  long_description: OpenClaw is an AI assistant that helps with DevOps, development, and automation tasks. It can execute commands, interact with tools, and help manage your infrastructure. It is for DAME employees only.
 
 features:
   app_home:
@@ -17,12 +17,16 @@ oauth_config:
   scopes:
     bot:
       - chat:write
+      - chat:write.public
       - chat:write.customize
+      - channels:join
       - channels:history
       - channels:read
       - groups:history
+      - groups:write
       - im:history
       - im:read
+      - im:write
       - mpim:history
       - mpim:read
       - app_mentions:read

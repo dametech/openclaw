@@ -148,7 +148,16 @@ check_prerequisites() {
 }
 
 detect_cluster_id() {
-    local context_name
+    local context_name context_basename
+
+    context_basename="$(basename "$KUBECONFIG_PATH")"
+    context_basename="${context_basename%.yaml}"
+    context_basename="${context_basename%.yml}"
+
+    if [ -n "$context_basename" ] && [ "$context_basename" != "." ] && [ "$context_basename" != ".." ]; then
+        echo "$context_basename"
+        return
+    fi
 
     export_kubeconfig
     context_name="$(kubectl config current-context 2>/dev/null || true)"

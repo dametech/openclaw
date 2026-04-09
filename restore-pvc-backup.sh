@@ -198,6 +198,9 @@ kind: PersistentVolumeClaim
 metadata:
   name: $PVC_NAME
   namespace: $NAMESPACE
+  labels:
+    app.kubernetes.io/instance: $RELEASE_NAME
+    app.kubernetes.io/managed-by: restore-pvc-backup
 spec:
   accessModes:
     - ReadWriteOnce

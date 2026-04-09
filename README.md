@@ -43,6 +43,7 @@ This script will:
 - Store your Bedrock credentials securely in a Kubernetes secret
 - Deploy OpenClaw using Helm
 - Validate the rendered `openclaw.json` locally before Helm runs
+- Copy repo-managed workspace docs such as `openclaw/workspace/BOOTSTRAP.md` and `openclaw/workspace/TOOLS.md` into the pod workspace on redeploy
 - Display the gateway token for authentication
 
 To deploy a new OpenClaw instance against an existing PVC instead of creating a new data claim:
@@ -160,6 +161,33 @@ kubectl create job --from=cronjob/openclaw-pvc-backup-dispatcher \
   -n openclaw openclaw-pvc-backup-dispatcher-manual-$(date +%s)
 ```
 
+To back up just one OpenClaw release/PVC on demand before a redeploy, use:
+
+```bash
+./backup-pvc-to-s3.sh --release-name oc-marc
+```
+
+If more than one PVC is labeled for that release, specify the PVC explicitly:
+
+```bash
+./backup-pvc-to-s3.sh --release-name oc-marc --pvc-name oc-marc
+```
+
+This one-off backup script:
+- checks cluster access using your kubeconfig
+- verifies `openclaw-backup-aws` and `openclaw-backup-script` already exist
+- resolves the PVC from `app.kubernetes.io/instance=<release>` if you do not pass `--pvc-name`
+- creates one backup `Job` using the same Python worker used by the CronJob
+- waits for completion by default and prints the job logs
+
+Useful options:
+
+```bash
+./backup-pvc-to-s3.sh --release-name oc-marc --cluster au01-0
+./backup-pvc-to-s3.sh --release-name oc-marc --timeout 45m
+./backup-pvc-to-s3.sh --release-name oc-marc --no-wait
+```
+
 Useful checks:
 
 ```bash
@@ -209,6 +237,13 @@ The final deploy step is still separate by design:
 
 The separation is intentional so you can inspect or validate the restored PVC before starting a new OpenClaw instance against it.
 
+When deploying against an existing or restored PVC, the deploy script now preserves selected runtime config from the existing `openclaw.json` when available:
+- `gateway.auth.token`
+- `channels.slack`
+- `channels.msteams`
+
+That prevents a restore-based redeploy from wiping previously configured Slack or Teams channel blocks that were stored on the PVC. The base deploy also now includes optional `envFrom` references for `${RELEASE_NAME}-slack-tokens` and `${RELEASE_NAME}-teams-credentials`, so restored channel configs can start working again immediately if those secrets still exist in the cluster.
+
 ## Deployment Architecture
 
 ### Components Deployed
@@ -223,6 +258,7 @@ The separation is intentional so you can inspect or validate the restored PVC be
   - Enables web scraping and browser automation
 
 - **Init Containers**:
+  - `init-dev-tools`: Installs the shared PVC-backed toolchain into `~/.openclaw/bin`
   - `init-config`: Replaces runtime config with the rendered Helm configuration
   - `init-skills`: Installs ClawHub skills (weather, gog)
 
@@ -236,6 +272,7 @@ The separation is intentional so you can inspect or validate the restored PVC be
 - **PersistentVolumeClaim**: 5Gi using `talos-hostpath` storage class
   - Stores workspace, sessions, and configuration
   - Persists across pod restarts
+  - Also stores the per-pod toolchain under `~/.openclaw/bin`, `~/.openclaw/tools`, and `~/.openclaw/.tool-versions`
 
 ### Security
 
@@ -246,6 +283,25 @@ The separation is intentional so you can inspect or validate the restored PVC be
   - Read-only root filesystem
   - Non-root user (UID 1000)
   - All capabilities dropped
+
+### Local Shell Tooling
+
+Each pod now gets a PVC-backed dev-tools layer during startup. The `init-dev-tools` container installs a stable local toolchain into `~/.openclaw/bin`, and the main container prepends that directory to `PATH`.
+
+This section is about binaries available inside the pod. Agent-callable shell or exec tools are separate OpenClaw tool definitions; installing binaries on `PATH` does not by itself make them appear as structured tools in the agent context.
+
+Common local shell tools available through this path include:
+- `jq`
+- `kubectl`
+- `helm`
+- `gh`
+- `go`
+- `terraform`
+- `op`
+- `aws`
+- `codex`
+
+The install is idempotent and version-pinned in [scripts/install-dev-tools.sh](/mnt/c/projects/openclaw/scripts/install-dev-tools.sh). Tools persist on the PVC across pod restarts without requiring a writable root filesystem.
 
 ## Configuration Files
 
@@ -473,9 +529,9 @@ kubectl exec -n openclaw deployment/openclaw -c main -- cat /home/node/.openclaw
 kubectl rollout restart deployment/openclaw -n openclaw
 ```
 
-### Sync Shared Plugins And Skills
+### Sync Shared Plugins, Skills, And Workspace
 
-To push the repo's current `openclaw/plugins/` and `openclaw/skills/` folders into every running OpenClaw deployment, then restart each deployment:
+To push the repo's current `openclaw/plugins/`, `openclaw/skills/`, and `openclaw/workspace/` folders into every running OpenClaw deployment, then restart each deployment:
 
 ```bash
 ./sync-openclaw-shared-config.sh
@@ -483,7 +539,11 @@ To push the repo's current `openclaw/plugins/` and `openclaw/skills/` folders in
 
 This script:
 - detects all deployments labeled as OpenClaw in the `openclaw` namespace
-- copies `openclaw/plugins/` and `openclaw/skills/` into `~/.openclaw/` in the running pod
+- copies `openclaw/plugins/`, `openclaw/skills/`, and `openclaw/workspace/` into `~/.openclaw/` in the running pod
+- includes repo-managed workspace docs such as `BOOTSTRAP.md` and `TOOLS.md`
+- overwrites matching files and adds new files
+- leaves pod-only files in place
+- does not overwrite `~/.openclaw/openclaw.json`; that file is still managed by deploy
 - restarts each deployment
 - waits for rollout completion and prints status
 
@@ -615,7 +675,31 @@ app-template:
 
 ### Add Chat Channels
 
-Configure Telegram, Discord, or Slack integration by adding credentials:
+Slack setup in this repo is release-specific and script-driven.
+
+1. Create or update the Slack app using [slack-app-manifest.yaml](./slack-app-manifest.yaml).
+2. Generate:
+   - a Socket Mode app token (`xapp-...`)
+   - a bot token (`xoxb-...`)
+3. Run:
+
+```bash
+./setup-slack-integration.sh
+```
+
+The script will:
+- ask for the target release name, for example `oc-marc`
+- create or update the `${RELEASE_NAME}-slack-tokens` secret
+- read the current `/home/node/.openclaw/openclaw.json` from the pod
+- merge a `channels.slack` block into that config instead of replacing it
+- keep Slack tokens in Kubernetes secrets and reference them through env placeholders
+- run `helm upgrade --reuse-values`
+- check recent Slack connection logs
+- offer to launch the pairing helper
+
+The base deploy template now includes a disabled `channels.slack` block by default. Deploy also preserves an existing live or restored `channels.slack` block when available, so a redeploy does not wipe previously configured Slack settings from `openclaw.json`. The main container also includes an optional `${RELEASE_NAME}-slack-tokens` `envFrom` reference, so a restored Slack channel can come back automatically when that secret is still present. The Slack setup script is still the step that actually enables the channel and creates or refreshes the token secret when needed.
+
+The main container ends up with two relevant secrets in `envFrom`:
 
 ```yaml
 app-template:
@@ -625,10 +709,62 @@ app-template:
         main:
           envFrom:
             - secretRef:
-                name: openclaw-env-secret
+                name: <release>-env-secret
             - secretRef:
-                name: openclaw-chat-credentials
+                name: <release>-slack-tokens
+                optional: true
 ```
+
+### Slack Pairing
+
+Slack setup does not complete pairing automatically. After the pod reports Slack connected:
+
+1. Open Slack and send a DM to the bot, or invite it to a channel and mention it.
+2. Run the pairing helper:
+
+```bash
+./approve-slack-pairing.sh --release oc-marc
+```
+
+The helper:
+- waits for the pod to be ready
+- prompts for the Slack pairing code immediately
+- can optionally list pending Slack pairings
+- approves the code with the OpenClaw CLI inside the pod
+
+If you restore a PVC that was already Slack-enabled, redeploy should now preserve the stored Slack channel block automatically and reattach the optional Slack secret reference. In that case you only need to rerun `setup-slack-integration.sh` if the `${RELEASE_NAME}-slack-tokens` secret is missing or stale, and you only need to rerun pairing if Slack/OpenClaw asks for it again during testing.
+
+If you already know the code, you can approve it directly:
+
+```bash
+./approve-slack-pairing.sh --release oc-marc --code ABC123
+```
+
+### Microsoft Teams
+
+Teams setup in this repo is also release-specific, but it is not built into the base deploy the way Slack now is.
+
+Use:
+
+```bash
+./setup-msteams-integration.sh
+```
+
+The Teams setup flow:
+- copies the vendored local Teams plugin from `openclaw/plugins/msteams` into the target pod
+- installs that plugin through the OpenClaw CLI in the pod
+- creates the `${RELEASE_NAME}-teams-credentials` secret
+- creates the Teams webhook service and ingress
+- patches `channels.msteams` into `openclaw.json`
+- restarts the deployment
+
+Deploy now preserves an existing live or restored `channels.msteams` block from `openclaw.json`, and the base deploy includes an optional `${RELEASE_NAME}-teams-credentials` `envFrom` reference. But Teams still depends on the extra runtime resources created by `setup-msteams-integration.sh`:
+- the installed `msteams` plugin
+- the Teams credentials secret
+- the Teams webhook service
+- the Teams ingress
+
+If you restore a PVC that was already Teams-enabled, redeploy should preserve the `channels.msteams` block. You still need to make sure the plugin, secret, service, and ingress exist in the cluster before expecting Teams to work again.
 
 ### Increase Resources
 

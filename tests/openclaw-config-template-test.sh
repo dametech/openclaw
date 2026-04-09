@@ -47,19 +47,24 @@ assert_contains '"apiKey": "aws-sdk"'
 assert_contains '"api": "bedrock-converse-stream"'
 assert_contains '"plugins"'
 assert_contains '"pod-delegate"'
-assert_contains '"tools"'
-assert_contains '"allow"'
-assert_contains '"ms_graph_query"'
-assert_contains '"jira_query"'
-assert_contains '"pod_delegate"'
+assert_contains '"channels"'
+assert_contains '"slack": __SLACK_CHANNEL_JSON__'
+assert_contains '"msteams": __MSTEAMS_CHANNEL_JSON__'
 assert_contains '__MSGRAPH_TENANT_ID_JSON__'
 assert_contains '__MSGRAPH_CLIENT_ID_JSON__'
 assert_contains '__JIRA_BASE_URL_JSON__'
 assert_contains '__GATEWAY_AUTH_TOKEN_JSON__'
 assert_contains '__OLLAMA_EMBEDDINGS_MODEL_JSON__'
 assert_contains '__POD_DELEGATE_TARGETS_JSON__'
+assert_contains '__SLACK_CHANNEL_JSON__'
+assert_contains '__MSTEAMS_CHANNEL_JSON__'
 assert_contains '"/home/node/.openclaw/plugins/ms-graph-query"'
 assert_contains '"/home/node/.openclaw/plugins/jira-query"'
 assert_contains '"/home/node/.openclaw/plugins/pod-delegate"'
+
+if grep -Fq -- '"tools"' "$TEMPLATE"; then
+    echo "unexpected tools block in $TEMPLATE" >&2
+    exit 1
+fi
 
 echo "openclaw config template checks passed"

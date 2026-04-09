@@ -25,7 +25,12 @@ assert_not_contains() {
 assert_contains 'echo -n "Enter instance name [openclaw]: "'
 assert_contains "This will delete the OpenClaw deployment '\$RELEASE_NAME' and associated resources."
 assert_contains "Deleting PersistentVolumeClaim(s) for release '\$RELEASE_NAME'..."
+assert_contains 'collect_release_pvcs()'
 assert_contains 'kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" -o name'
+assert_contains 'kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" -o jsonpath='
+assert_contains ".spec.template.spec.volumes[*]"
+assert_contains "persistentVolumeClaim.claimName"
+assert_contains "sort -u"
 assert_contains 'kubectl delete -n "$NAMESPACE" $pvc_names'
 assert_contains 'delete_configmaps'
 assert_contains 'Deleting ConfigMap(s) for release '\''$RELEASE_NAME'\''...'
