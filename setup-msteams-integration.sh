@@ -51,7 +51,7 @@ check_prerequisites() {
     log_step "Checking prerequisites"
 
     local missing=0
-    for cmd in kubectl helm jq; do
+    for cmd in kubectl jq; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             log_error "$cmd not found"
             missing=1
@@ -90,14 +90,26 @@ prompt_inputs() {
         NAMESPACE="$input_namespace"
     fi
 
-    echo -n "Enter Azure app registration (client) ID: "
-    read -r MSTEAMS_APP_ID
+    if [ -n "${MSTEAMS_APP_ID:-}" ]; then
+        log_info "Using MSTEAMS_APP_ID from environment"
+    else
+        echo -n "Enter Azure app registration (client) ID: "
+        read -r MSTEAMS_APP_ID
+    fi
 
-    echo -n "Enter Azure app registration client secret value: "
-    read -r MSTEAMS_APP_PASSWORD
+    if [ -n "${MSTEAMS_APP_PASSWORD:-}" ]; then
+        log_info "Using MSTEAMS_APP_PASSWORD from environment"
+    else
+        echo -n "Enter Azure app registration client secret value: "
+        read -r MSTEAMS_APP_PASSWORD
+    fi
 
-    echo -n "Enter Microsoft Entra tenant ID: "
-    read -r MSTEAMS_TENANT_ID
+    if [ -n "${MSTEAMS_TENANT_ID:-}" ]; then
+        log_info "Using MSTEAMS_TENANT_ID from environment"
+    else
+        echo -n "Enter Microsoft Entra tenant ID: "
+        read -r MSTEAMS_TENANT_ID
+    fi
 
     if [ -z "$MSTEAMS_APP_ID" ] || [ -z "$MSTEAMS_APP_PASSWORD" ] || [ -z "$MSTEAMS_TENANT_ID" ]; then
         log_error "Teams credentials cannot be empty"
@@ -199,6 +211,7 @@ ensure_plugin_installed() {
     fi
 
     kubectl exec -n "$NAMESPACE" deployment/"$RELEASE_NAME" -c main -- \
+        env NPM_CONFIG_CACHE=/home/node/.openclaw/.npm XDG_CACHE_HOME=/home/node/.openclaw/.cache \
         openclaw plugins list | grep -Fq 'msteams' && return
 
     kubectl exec -n "$NAMESPACE" "$POD_NAME" -c main -- rm -rf /tmp/openclaw-msteams-source
@@ -206,6 +219,7 @@ ensure_plugin_installed() {
     kubectl cp "$LOCAL_PLUGIN_DIR/." "$NAMESPACE/$POD_NAME:/tmp/openclaw-msteams-source" -c main
 
     kubectl exec -n "$NAMESPACE" deployment/"$RELEASE_NAME" -c main -- \
+        env NPM_CONFIG_CACHE=/home/node/.openclaw/.npm XDG_CACHE_HOME=/home/node/.openclaw/.cache \
         openclaw plugins install /tmp/openclaw-msteams-source || {
         log_error "Local msteams plugin install failed"
         log_error "The runtime must be able to complete 'openclaw plugins install /tmp/openclaw-msteams-source' before Teams can be enabled"
@@ -213,8 +227,8 @@ ensure_plugin_installed() {
     }
 }
 
-patch_openclaw_config() {
-    log_step "Patching OpenClaw configuration"
+apply_openclaw_config() {
+    log_step "Updating OpenClaw configuration"
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
@@ -241,8 +255,16 @@ patch_openclaw_config() {
     printf '%s' "$updated_json" | kubectl exec -n "$NAMESPACE" deployment/"$RELEASE_NAME" -c main -i -- \
         sh -c 'cat > /home/node/.openclaw/openclaw.json'
 
-    kubectl rollout restart deployment/"$RELEASE_NAME" -n "$NAMESPACE"
-    kubectl wait --for=condition=ready pod -l "app.kubernetes.io/instance=$RELEASE_NAME" -n "$NAMESPACE" --timeout=180s
+    log_info "Reloading OpenClaw gateway inside pod $POD_NAME..."
+    kubectl exec -n "$NAMESPACE" "$POD_NAME" -c main -- sh -lc '
+        gateway_pid="$(pgrep -xo openclaw || true)"
+        if [ -z "$gateway_pid" ]; then
+            echo "failed to locate openclaw gateway process" >&2
+            exit 1
+        fi
+        kill -USR1 "$gateway_pid"
+    '
+    sleep 5
 }
 
 create_teams_ingress() {
@@ -297,7 +319,7 @@ main() {
     create_teams_secret
     create_teams_service
     ensure_plugin_installed
-    patch_openclaw_config
+    apply_openclaw_config
     create_teams_ingress
     show_summary
 }

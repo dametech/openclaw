@@ -70,6 +70,8 @@ assert_contains 'advancedMounts:'
 assert_contains 'init-dev-tools:'
 assert_contains '- path: /data'
 assert_contains 'init-config:'
+assert_contains 'NPM_CONFIG_CACHE: "/home/node/.openclaw/.npm"'
+assert_contains 'XDG_CACHE_HOME: "/home/node/.openclaw/.cache"'
 assert_contains 'PATH: "/home/node/.openclaw/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"'
 assert_contains 'GOPATH: "/home/node/.openclaw/go"'
 assert_contains 'GOROOT: "/home/node/.openclaw/tools/go"'
@@ -211,6 +213,7 @@ assert_contains 'AWS_REGION: "ap-southeast-2"'
 assert_contains 'kubectl delete secret "$SECRET_NAME" -n "$NAMESPACE" --ignore-not-found'
 assert_contains 'name: '\''{{ .Release.Name }}-workspace-archive'\'''
 assert_contains '- path: /workspace-source'
+assert_contains 'Reminder: run ./sync-openclaw-shared-config.sh if you changed repo-managed plugins, skills, or workspace files.'
 if grep -Fq -- '- loopback' "$SCRIPT"; then
     echo "unexpected loopback bind mode in $SCRIPT" >&2
     exit 1

@@ -39,7 +39,6 @@ Common command-line tools available inside the pod include:
 - `terraform`
 - `op`
 - `aws`
-- `codex`
 - `curl`
 - `tar`
 - `gzip`

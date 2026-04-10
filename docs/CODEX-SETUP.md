@@ -4,7 +4,7 @@
 
 [OpenAI Codex CLI](https://github.com/openai/codex) is an AI-powered coding assistant that runs in the terminal. It can write code, run commands, and work with your codebase.
 
-Installed at: `~/.openclaw/bin/codex` (PVC, shared by all agents)
+Codex is not installed by default on OpenClaw pods. Use this guide only if you want to install and configure it separately.
 
 ## Authentication
 

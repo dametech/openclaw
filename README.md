@@ -299,7 +299,6 @@ Common local shell tools available through this path include:
 - `terraform`
 - `op`
 - `aws`
-- `codex`
 
 The install is idempotent and version-pinned in [scripts/install-dev-tools.sh](/mnt/c/projects/openclaw/scripts/install-dev-tools.sh). Tools persist on the PVC across pod restarts without requiring a writable root filesystem.
 

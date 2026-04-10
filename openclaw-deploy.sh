@@ -629,6 +629,8 @@ app-template:
           # Reference the secret containing the Bedrock credentials
           env:
             NODE_OPTIONS: "--max-old-space-size=2048"
+            NPM_CONFIG_CACHE: "/home/node/.openclaw/.npm"
+            XDG_CACHE_HOME: "/home/node/.openclaw/.cache"
             PATH: "/home/node/.openclaw/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
             GOPATH: "/home/node/.openclaw/go"
             GOROOT: "/home/node/.openclaw/tools/go"
@@ -1002,6 +1004,8 @@ show_access_info() {
     echo "Useful commands:"
     echo "  kubectl get pods -n $NAMESPACE"
     echo "  kubectl logs -n $NAMESPACE -l app.kubernetes.io/instance=$RELEASE_NAME -c main -f"
+    echo ""
+    echo "Reminder: run ./sync-openclaw-shared-config.sh if you changed repo-managed plugins, skills, or workspace files."
     echo ""
 }
 

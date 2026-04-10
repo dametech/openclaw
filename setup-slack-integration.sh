@@ -12,10 +12,8 @@ NAMESPACE="openclaw"
 RELEASE_NAME="openclaw"
 SLACK_SECRET_NAME="${RELEASE_NAME}-slack-tokens"
 ENV_SECRET_NAME="${RELEASE_NAME}-env-secret"
-SLACK_VALUES_FILE="/tmp/${RELEASE_NAME}-slack-values.yaml"
-CURRENT_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw-current.json"
-MERGED_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw-slack-config.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+POD_NAME=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -76,9 +74,6 @@ get_release_name() {
 
     SLACK_SECRET_NAME="${RELEASE_NAME}-slack-tokens"
     ENV_SECRET_NAME="${RELEASE_NAME}-env-secret"
-    SLACK_VALUES_FILE="/tmp/${RELEASE_NAME}-slack-values.yaml"
-    CURRENT_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw-current.json"
-    MERGED_CONFIG_JSON="/tmp/${RELEASE_NAME}-openclaw-slack-config.json"
 }
 
 # Check prerequisites
@@ -92,13 +87,8 @@ check_prerequisites() {
         missing=1
     fi
 
-    if ! command -v helm &> /dev/null; then
-        log_error "helm not found"
-        missing=1
-    fi
-
-    if ! command -v python3 &> /dev/null; then
-        log_error "python3 not found"
+    if ! command -v jq &> /dev/null; then
+        log_error "jq not found"
         missing=1
     fi
 
@@ -135,6 +125,13 @@ ensure_release_exists() {
 
     if ! kubectl get secret "$ENV_SECRET_NAME" -n "$NAMESPACE" >/dev/null 2>&1; then
         log_error "Required environment secret '$ENV_SECRET_NAME' not found in namespace '$NAMESPACE'"
+        exit 1
+    fi
+
+    POD_NAME=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/instance=$RELEASE_NAME" \
+        -o jsonpath='{.items[0].metadata.name}')
+    if [ -z "$POD_NAME" ]; then
+        log_error "Failed to determine pod name for deployment '$RELEASE_NAME'"
         exit 1
     fi
 
@@ -626,119 +623,44 @@ EOF
     log_info "✓ Secret created: $SLACK_SECRET_NAME"
 }
 
-# Generate openclaw.json configuration
-generate_openclaw_config() {
-    log_step "Step 5: Generate Configuration"
+apply_openclaw_config() {
+    log_step "Step 5: Update OpenClaw Configuration"
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
-    log_info "Reading current openclaw.json from pod..."
-    kubectl exec -n "$NAMESPACE" deployment/"$RELEASE_NAME" -c main -- \
-        cat /home/node/.openclaw/openclaw.json > "$CURRENT_CONFIG_JSON"
+    local current_json updated_json
+    current_json=$(kubectl exec -n "$NAMESPACE" deployment/"$RELEASE_NAME" -c main -- \
+        cat /home/node/.openclaw/openclaw.json)
 
-    if [ ! -s "$CURRENT_CONFIG_JSON" ]; then
-        log_error "Failed to read current configuration from pod"
-        exit 1
-    fi
+    updated_json=$(printf '%s' "$current_json" | jq \
+        --arg appToken "$SLACK_APP_TOKEN" \
+        --arg botToken "$SLACK_BOT_TOKEN" \
+        '.channels.slack.enabled = true
+        | .channels.slack.mode = "socket"
+        | .channels.slack.appToken = $appToken
+        | .channels.slack.botToken = $botToken
+        | .channels.slack.groupPolicy = "open"')
 
-    log_info "Merging Slack configuration into current openclaw.json..."
+    printf '%s' "$updated_json" | kubectl exec -n "$NAMESPACE" deployment/"$RELEASE_NAME" -c main -i -- \
+        sh -c 'cat > /home/node/.openclaw/openclaw.json'
 
-    python3 - <<PY
-from pathlib import Path
-import json
-
-current_config_path = Path(${CURRENT_CONFIG_JSON@Q})
-merged_config_path = Path(${MERGED_CONFIG_JSON@Q})
-cfg = json.loads(current_config_path.read_text())
-
-channels = cfg.setdefault("channels", {})
-slack = channels.get("slack")
-if not isinstance(slack, dict):
-    slack = {}
-
-slack["enabled"] = True
-slack["mode"] = "socket"
-slack["appToken"] = "\${SLACK_APP_TOKEN}"
-slack["botToken"] = "\${SLACK_BOT_TOKEN}"
-slack["groupPolicy"] = "open"
-
-channels["slack"] = slack
-merged_config_path.write_text(json.dumps(cfg, indent=2) + "\n")
-PY
-
-    log_info "✓ Merged configuration created: $MERGED_CONFIG_JSON"
-}
-
-# Update Helm values and deploy
-update_helm_deployment() {
-    log_step "Step 6: Update Helm Deployment"
-
-    export KUBECONFIG="$KUBECONFIG_PATH"
-
-    log_info "Creating Helm values file..."
-
-    cat > "$SLACK_VALUES_FILE" <<EOF
-app-template:
-  controllers:
-    main:
-      containers:
-        main:
-          envFrom:
-            - secretRef:
-                name: $ENV_SECRET_NAME
-            - secretRef:
-                name: $SLACK_SECRET_NAME
-
-  configMaps:
-    config:
-      data:
-        openclaw.json: |
-$(sed 's/^/          /' "$MERGED_CONFIG_JSON")
-EOF
-
-    log_info "Deploying updated configuration to Kubernetes..."
-
-    if ! helm upgrade "$RELEASE_NAME" openclaw-community/openclaw \
-        --namespace "$NAMESPACE" \
-        --reuse-values \
-        --values "$SLACK_VALUES_FILE" \
-        --wait \
-        --timeout 10m; then
-        log_warn "Helm upgrade did not report ready within the timeout. Checking actual deployment readiness..."
-
-        if kubectl wait --for=condition=available deployment/"$RELEASE_NAME" \
-            -n "$NAMESPACE" \
-            --timeout=300s; then
-            log_warn "Deployment became available after the Helm timeout. Continuing."
-        else
-            log_error "Deployment '$RELEASE_NAME' did not become available after Slack configuration update."
-            show_k8s_diagnostics
+    log_info "Reloading OpenClaw gateway inside pod $POD_NAME..."
+    kubectl exec -n "$NAMESPACE" "$POD_NAME" -c main -- sh -lc '
+        gateway_pid="$(pgrep -xo openclaw || true)"
+        if [ -z "$gateway_pid" ]; then
+            echo "failed to locate openclaw gateway process" >&2
             exit 1
         fi
-    fi
+        kill -USR1 "$gateway_pid"
+    '
+    sleep 5
 
-    log_info "✓ Deployment updated successfully"
-}
-
-# Wait for pod to be ready
-wait_for_pod() {
-    log_step "Step 7: Wait for Pod Ready"
-
-    export KUBECONFIG="$KUBECONFIG_PATH"
-
-    log_info "Waiting for OpenClaw pod to be ready..."
-
-    kubectl wait --for=condition=ready pod \
-        -l "app.kubernetes.io/instance=$RELEASE_NAME" \
-        -n "$NAMESPACE" \
-        --timeout=300s
-
-    log_info "✓ Pod is ready!"
+    log_info "✓ Slack configuration patched in openclaw.json"
 }
 
 # Test Slack integration
 test_slack_integration() {
-    log_step "Step 8: Verify Slack Integration"
+    log_step "Step 6: Verify Slack Integration"
 
     export KUBECONFIG="$KUBECONFIG_PATH"
 
@@ -809,12 +731,10 @@ ${BLUE}📊 View Logs:${NC}
 
    kubectl logs -n openclaw -l app.kubernetes.io/instance=$RELEASE_NAME -c main -f
 
-${BLUE}📄 Configuration Files:${NC}
+${BLUE}📄 Configuration:${NC}
 
    • Kubernetes Secret: ${CYAN}$SLACK_SECRET_NAME${NC}
-   • Helm Values: ${CYAN}$SLACK_VALUES_FILE${NC}
-   • Original Config Snapshot: ${CYAN}$CURRENT_CONFIG_JSON${NC}
-   • Merged Config: ${CYAN}$MERGED_CONFIG_JSON${NC}
+   • OpenClaw config: ${CYAN}channels.slack${NC} patched live in ${CYAN}/home/node/.openclaw/openclaw.json${NC}
    • OAuth Scopes: ${CYAN}/tmp/slack-bot-scopes.txt${NC}
    • Bot Events: ${CYAN}/tmp/slack-bot-events.txt${NC}
 
@@ -855,9 +775,7 @@ main() {
     collect_slack_tokens
     store_in_1password
     create_k8s_secret
-    generate_openclaw_config
-    update_helm_deployment
-    wait_for_pod
+    apply_openclaw_config
     test_slack_integration
     offer_pairing_helper
     show_completion
